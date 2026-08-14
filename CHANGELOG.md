@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Encoder stabil (drain sinkron + fallback bitrate)
+
+- Ganti `MediaCodec.Callback` (rawan `CodecException` kosong di perangkat
+  tertentu + butuh Looper) dengan drain sinkron `dequeueOutputBuffer` di thread
+  pengirim.
+- Fallback mode bitrate: CQ -> VBR -> CBR; kalau semua gagal, tercatat jelas.
+- Log error encoder kini menyertakan kelas exception; guard encoder H.264 tidak
+  tersedia.
+
 ## [v1.0 — 2026-08-14] — Fix MediaProjection gagal (wajib FGS mediaProjection)
 
 - Sesuai AOSP (API 29+): `MediaProjectionManager.getMediaProjection()` harus

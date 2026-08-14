@@ -7,6 +7,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.projection.MediaProjection
+import android.view.Surface
 import android.os.Bundle
 import com.tasirin.cast.protocol.CastLog
 import com.tasirin.cast.protocol.Packetizer
@@ -16,7 +17,6 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
 
 /**
  * Transmitter layar: MediaProjection -> VirtualDisplay -> encoder H.264 ->
@@ -38,6 +38,7 @@ class ScreenStreamer(
     private val targetQueue = LinkedBlockingQueue<InetAddress>()
 
     private var codec: MediaCodec? = null
+    private var inputSurface: Surface? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var socket: DatagramSocket? = null
     @Volatile private var running = false
@@ -119,80 +120,107 @@ class ScreenStreamer(
     private fun startCodecAndSend(target: InetAddress, sock: DatagramSocket) {
         try {
             CastLog.event("Menyiapkan encoder H.264 untuk ${target.hostAddress}")
-            val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-            val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
-                setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-                setInteger(MediaFormat.KEY_BIT_RATE, 6_000_000)
-                setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CQ)
-                setInteger(MediaFormat.KEY_FRAME_RATE, 30)
-                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
-                setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
-            }
-            enc.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            val inputSurface = enc.createInputSurface()
-            enc.setCallback(encoderCallback(sock, target))
-            enc.start()
+            val enc = createEncoder() ?: return
             codec = enc
 
             virtualDisplay = projection.createVirtualDisplay(
                 "TasirinCast",
                 width, height, dpi,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                inputSurface, null, null
+                inputSurface!!, null, null
             )
             started = true
             CastLog.event("Streaming ke ${target.hostAddress}:${Protocol.DEFAULT_PORT} ($width x $height)")
             onStatus("Streaming ke ${target.hostAddress}")
 
+            // Drain sinkron: lebih kompatibel lintas perangkat daripada
+            // MediaCodec.Callback (callback butuh Looper & rawan bug OEM).
+            val info = MediaCodec.BufferInfo()
+            var framesSent = 0L
             while (running) {
-                val packet = sendQueue.poll(500, TimeUnit.MILLISECONDS) ?: continue
-                sock.send(DatagramPacket(packet, packet.size, target, Protocol.DEFAULT_PORT))
+                when (val out = enc.dequeueOutputBuffer(info, 100_000)) {
+                    MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
+                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> Unit
+                    else -> {
+                        if (out >= 0) {
+                            if ((info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                                enc.releaseOutputBuffer(out, false)
+                            } else {
+                                val buffer = enc.getOutputBuffer(out)
+                                if (buffer != null) {
+                                    val bytes = ByteArray(info.size)
+                                    buffer.position(info.offset)
+                                    buffer.get(bytes)
+                                    val timestampMs = (info.presentationTimeUs / 1000).toUInt()
+                                    for (packet in packetizer.packetsFor(bytes, timestampMs)) {
+                                        sendQueue.put(packet)
+                                    }
+                                    framesSent++
+                                    if (framesSent % 30 == 0L) {
+                                        CastLog.event("Frame terkirim: $framesSent")
+                                    }
+                                }
+                                enc.releaseOutputBuffer(out, false)
+                            }
+                        }
+                    }
+                }
+                sendPending(sock, target)
             }
         } catch (e: Exception) {
-            CastLog.event("ERROR encoder: ${e.message}")
+            CastLog.event("ERROR encoder: ${e.javaClass.simpleName}: ${e.message}")
             onStatus("Gagal: ${e.message}")
         } finally {
             stop()
         }
     }
 
-    private fun encoderCallback(sock: DatagramSocket, target: InetAddress) =
-        object : MediaCodec.Callback() {
-            private var framesSent = 0L
-
-            override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
-                try {
-                    if ((info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                        codec.releaseOutputBuffer(index, false)
-                        return
-                    }
-                    val buffer = codec.getOutputBuffer(index) ?: return
-                    val bytes = ByteArray(info.size)
-                    buffer.position(info.offset)
-                    buffer.get(bytes)
-                    codec.releaseOutputBuffer(index, false)
-
-                    val timestampMs = (info.presentationTimeUs / 1000).toUInt()
-                    for (packet in packetizer.packetsFor(bytes, timestampMs)) {
-                        sendQueue.put(packet)
-                    }
-                    framesSent++
-                    if (framesSent % 30 == 0L) {
-                        CastLog.event("Frame terkirim: $framesSent")
-                    }
-                } catch (t: Throwable) {
-                    CastLog.event("ERROR encoder callback: ${t.javaClass.simpleName}: ${t.message}")
-                }
-            }
-
-            override fun onInputBufferAvailable(codec: MediaCodec, index: Int) = Unit
-
-            override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
-                CastLog.event("ERROR encoder: ${e.diagnosticInfo ?: e.message}")
-            }
-
-            override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) = Unit
+    /** Buat encoder H.264 surface; coba mode bitrate CQ -> VBR -> CBR. */
+    private fun createEncoder(): MediaCodec? {
+        val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        if (enc == null) {
+            CastLog.event("ERROR encoder: perangkat tidak punya encoder H.264")
+            return null
         }
+        val modes = listOf(
+            MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CQ,
+            MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR,
+            MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR,
+        )
+        for (mode in modes) {
+            try {
+                val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
+                    setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+                    setInteger(MediaFormat.KEY_BIT_RATE, 6_000_000)
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, mode)
+                    setInteger(MediaFormat.KEY_FRAME_RATE, 30)
+                    setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                    setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+                }
+                // Urutan wajib: configure -> createInputSurface -> start.
+                enc.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                inputSurface = enc.createInputSurface()
+                enc.start()
+                CastLog.event("Encoder siap (bitrate mode $mode)")
+                return enc
+            } catch (e: Exception) {
+                CastLog.event("Encoder gagal mode $mode: ${e.javaClass.simpleName}: ${e.message}")
+                runCatching { enc.stop() }
+                runCatching { enc.release() }
+            }
+        }
+        CastLog.event("ERROR encoder: semua mode bitrate gagal")
+        onStatus("Gagal: encoder H.264 tidak tersedia")
+        return null
+    }
+
+    /** Kirim semua paket yang sudah menunggu di antrean. */
+    private fun sendPending(sock: DatagramSocket, target: InetAddress) {
+        while (running) {
+            val packet = sendQueue.poll() ?: break
+            sock.send(DatagramPacket(packet, packet.size, target, Protocol.DEFAULT_PORT))
+        }
+    }
 
     private fun requestSyncFrame() {
         runCatching {
