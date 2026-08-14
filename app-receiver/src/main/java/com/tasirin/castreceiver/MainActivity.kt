@@ -16,6 +16,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashCatcher.install(this)
+        CrashCatcher.drainToLog(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

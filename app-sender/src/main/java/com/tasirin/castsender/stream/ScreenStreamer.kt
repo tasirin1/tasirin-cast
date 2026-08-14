@@ -160,23 +160,27 @@ class ScreenStreamer(
             private var framesSent = 0L
 
             override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
-                if ((info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                try {
+                    if ((info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                        codec.releaseOutputBuffer(index, false)
+                        return
+                    }
+                    val buffer = codec.getOutputBuffer(index) ?: return
+                    val bytes = ByteArray(info.size)
+                    buffer.position(info.offset)
+                    buffer.get(bytes)
                     codec.releaseOutputBuffer(index, false)
-                    return
-                }
-                val buffer = codec.getOutputBuffer(index) ?: return
-                val bytes = ByteArray(info.size)
-                buffer.position(info.offset)
-                buffer.get(bytes)
-                codec.releaseOutputBuffer(index, false)
 
-                val timestampMs = (info.presentationTimeUs / 1000).toUInt()
-                for (packet in packetizer.packetsFor(bytes, timestampMs)) {
-                    sendQueue.put(packet)
-                }
-                framesSent++
-                if (framesSent % 30 == 0L) {
-                    CastLog.event("Frame terkirim: $framesSent")
+                    val timestampMs = (info.presentationTimeUs / 1000).toUInt()
+                    for (packet in packetizer.packetsFor(bytes, timestampMs)) {
+                        sendQueue.put(packet)
+                    }
+                    framesSent++
+                    if (framesSent % 30 == 0L) {
+                        CastLog.event("Frame terkirim: $framesSent")
+                    }
+                } catch (t: Throwable) {
+                    CastLog.event("ERROR encoder callback: ${t.javaClass.simpleName}: ${t.message}")
                 }
             }
 

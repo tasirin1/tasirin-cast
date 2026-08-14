@@ -19,42 +19,51 @@ class MainActivity : AppCompatActivity() {
 
     private val projectionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK && result.data != null) {
-                val ip = binding.etIp.text.toString().trim()
-                val targetIp = if (ip.isEmpty()) {
-                    null
-                } else {
-                    runCatching { InetAddress.getByName(ip) }.getOrNull()
-                }
-                if (ip.isNotEmpty() && targetIp == null) {
-                    CastLog.event("IP receiver tidak valid: $ip")
-                    Toast.makeText(this, R.string.toast_invalid_ip, Toast.LENGTH_SHORT).show()
-                } else {
-                    // Projection dibuat DI SINI (konsen masih segar) lalu diserahkan
-                    // ke service via static — menghindari token hilang saat re-parcel Intent.
-                    val pm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                    val projection = pm.getMediaProjection(result.resultCode, result.data!!)
-                    if (projection == null) {
-                        CastLog.event("Gagal membuat MediaProjection")
-                        setStatus(getString(R.string.status_projection_failed))
+            try {
+                if (result.resultCode == RESULT_OK && result.data != null) {
+                    val ip = binding.etIp.text.toString().trim()
+                    val targetIp = if (ip.isEmpty()) {
+                        null
                     } else {
-                        CastService.pendingProjection = projection
-                        val serviceIntent = Intent(this, CastService::class.java).apply {
-                            putExtra(CastService.EXTRA_TARGET_IP, ip)
-                        }
-                        ContextCompat.startForegroundService(this, serviceIntent)
-                        binding.btnStart.text = getString(R.string.btn_stop)
-                        CastLog.event("Streaming dimulai — foreground service aktif")
+                        runCatching { InetAddress.getByName(ip) }.getOrNull()
                     }
+                    if (ip.isNotEmpty() && targetIp == null) {
+                        CastLog.event("IP receiver tidak valid: $ip")
+                        Toast.makeText(this, R.string.toast_invalid_ip, Toast.LENGTH_SHORT).show()
+                    } else {
+                        // Projection dibuat DI SINI (konsen masih segar) lalu diserahkan
+                        // ke service via static — menghindari token hilang saat re-parcel Intent.
+                        val pm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                        val projection = runCatching {
+                            pm.getMediaProjection(result.resultCode, result.data!!)
+                        }.getOrNull()
+                        if (projection == null) {
+                            CastLog.event("Gagal membuat MediaProjection (null/exception)")
+                            setStatus(getString(R.string.status_projection_failed))
+                        } else {
+                            CastService.pendingProjection = projection
+                            val serviceIntent = Intent(this, CastService::class.java).apply {
+                                putExtra(CastService.EXTRA_TARGET_IP, ip)
+                            }
+                            ContextCompat.startForegroundService(this, serviceIntent)
+                            binding.btnStart.text = getString(R.string.btn_stop)
+                            CastLog.event("Streaming dimulai — foreground service aktif")
+                        }
+                    }
+                } else {
+                    CastLog.event("Izin MediaProjection ditolak")
+                    setStatus(getString(R.string.status_permission_denied))
                 }
-            } else {
-                CastLog.event("Izin MediaProjection ditolak")
-                setStatus(getString(R.string.status_permission_denied))
+            } catch (t: Throwable) {
+                CastLog.event("ERROR start: ${t.javaClass.simpleName}: ${t.message}")
+                setStatus("Gagal: ${t.message}")
             }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashCatcher.install(this)
+        CrashCatcher.drainToLog(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

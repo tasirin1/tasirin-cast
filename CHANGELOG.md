@@ -1,5 +1,13 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Anti force close + laporan crash otomatis
+
+- Semua titik rawan dibungkus try/catch agar tidak force close: callback hasil
+  dialog izin, `getMediaProjection`, dan callback encoder (thread MediaCodec).
+- `CrashCatcher` baru (sender & receiver): menangkap exception tak terduga,
+  menulis stack trace ke Realtime Log + file, lalu memuatnya ke log lagi saat
+  app dibuka berikutnya — penyebab force close selalu terlihat di Realtime Log.
+
 ## [v1.0 — 2026-08-14] — Fix streaming tidak jalan (projection hilang)
 
 - MediaProjection kini dibuat langsung di MainActivity (konsen dialog masih
