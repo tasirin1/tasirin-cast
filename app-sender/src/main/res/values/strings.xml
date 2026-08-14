@@ -7,10 +7,10 @@
     <string name="btn_copy_log">Copy Log</string>
     <string name="toast_log_copied">Log copied to clipboard</string>
     <string name="quality_label">Video quality</string>
-    <string name="quality_low">Low (640x360)</string>
-    <string name="quality_medium">Medium (854x480)</string>
-    <string name="quality_high">High (1280x720)</string>
-    <string name="quality_ultra">Ultra (1920x1080)</string>
+    <string name="quality_low">Low (max 640p)</string>
+    <string name="quality_medium">Medium (max 854p)</string>
+    <string name="quality_high">High (max 1280p)</string>
+    <string name="quality_ultra">Ultra (max 1920p)</string>
     <string name="et_ip_hint">Receiver IP (empty = auto-discover)</string>
     <string name="toast_invalid_ip">Invalid receiver IP</string>
     <string name="toast_not_implemented">Streaming implementation is on the roadmap</string>

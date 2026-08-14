@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.Toast
@@ -24,6 +25,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private var receiver: ScreenReceiver? = null
     private var surface: Surface? = null
     private var surfaceTexture: SurfaceTexture? = null
+    private var layoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
 
     // Ukuran video default; diperbarui saat decoder melaporkan ukuran asli.
     private var videoWidth = 1280
@@ -46,6 +48,17 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             if (receiver == null) startReceiver() else stopReceiver()
         }
         binding.btnStop.setOnClickListener { stopReceiver() }
+
+        // TextureView selalu me-reset ukuran buffer SurfaceTexture ke ukuran
+        // view saat layout berubah (mis. mode immersive menyembunyikan system
+        // bar). Listener ini mengembalikannya ke ukuran video asli + ulang
+        // transform supaya tampilan tetap fit-center.
+        val listener = ViewTreeObserver.OnGlobalLayoutListener {
+            runCatching { surfaceTexture?.setDefaultBufferSize(videoWidth, videoHeight) }
+            updateTextureTransform()
+        }
+        binding.textureView.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        layoutListener = listener
     }
 
     private fun startReceiver() {
@@ -192,5 +205,8 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     override fun onDestroy() {
         super.onDestroy()
         stopReceiver()
+        val observer = binding.textureView.viewTreeObserver
+        layoutListener?.let { if (observer.isAlive) observer.removeOnGlobalLayoutListener(it) }
+        layoutListener = null
     }
 }

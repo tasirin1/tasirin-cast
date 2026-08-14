@@ -1,3 +1,12 @@
+## [v1.0 — 2026-08-14] — Capture ikut aspek layar + buffer texture stabil
+
+- Sender: resolusi capture mengikuti aspek layar asli — mode potret kini
+  menghasilkan video potret (tidak lagi diregangkan/bergeser ke kanan);
+  preset kualitas berarti sisi terpanjang maksimal (640/854/1280/1920p).
+- Receiver: ukuran buffer SurfaceTexture dijamin selebar video asli walau
+  layout berubah (immersive/system bar) — video fit-center stabil, tidak
+  lagi ke-zoom-in atau tidak tengah.
+
 ## [v1.0 — 2026-08-14] — Video receiver fit-center + pengaturan kualitas di sender
 
 - Receiver: buffer SurfaceTexture kini disetel selebar video asli

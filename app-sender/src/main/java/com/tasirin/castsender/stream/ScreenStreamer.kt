@@ -19,6 +19,7 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.LinkedBlockingQueue
+import kotlin.math.min
 
 /**
  * Transmitter layar: MediaProjection -> VirtualDisplay -> encoder H.264 ->
@@ -32,10 +33,26 @@ class ScreenStreamer(
     private val quality: Quality,
     private val onStatus: (String) -> Unit,
 ) {
-    private val width get() = quality.width
-    private val height get() = quality.height
-    private val dpi = context.resources.displayMetrics.densityDpi
+    // Resolusi capture mengikuti aspek layar asli (mode potret = video
+    // potret, tidak lagi diregangkan jadi 16:9), diskalakan agar sisi
+    // terpanjang tidak melebihi preset kualitas.
+    private val width: Int
+    private val height: Int
+    private val dpi: Int
     private val packetizer = Packetizer()
+
+    init {
+        val dm = context.resources.displayMetrics
+        val screenW = dm.widthPixels
+        val screenH = dm.heightPixels
+        val longSide = maxOf(screenW, screenH)
+        val scale = min(1f, quality.maxDimension.toFloat() / longSide)
+        // Genapkan ukuran (kelipatan 2) supaya aman untuk encoder.
+        width = ((screenW * scale).toInt() and 0x7FFFFFFE).coerceAtLeast(2)
+        height = ((screenH * scale).toInt() and 0x7FFFFFFE).coerceAtLeast(2)
+        dpi = dm.densityDpi
+        CastLog.event("Resolusi capture: ${width}x${height} (layar ${screenW}x${screenH}, preset ${quality.key})")
+    }
 
     private val sendQueue = LinkedBlockingQueue<ByteArray>(512)
     private val targetQueue = LinkedBlockingQueue<InetAddress>()

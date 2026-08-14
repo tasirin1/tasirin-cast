@@ -84,7 +84,7 @@ class CastService : Service() {
             val ip = intent?.getStringExtra(EXTRA_TARGET_IP).orEmpty()
             val targetIp = if (ip.isEmpty()) null else runCatching { InetAddress.getByName(ip) }.getOrNull()
             val quality = Quality.fromKey(intent?.getStringExtra(EXTRA_QUALITY))
-            CastLog.event("Kualitas video: ${quality.width}x${quality.height} (${quality.bitrate / 1_000_000} Mbps)")
+            CastLog.event("Kualitas video: ${quality.key} (max ${quality.maxDimension}p, ${quality.bitrate / 1_000_000} Mbps)")
             val s = ScreenStreamer(this, projection, targetIp, quality) { msg -> onStatus?.invoke(msg) }
             streamer = s
             if (s.start()) {
