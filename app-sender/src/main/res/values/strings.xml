@@ -9,6 +9,10 @@
     <string name="toast_not_implemented">Streaming implementation is on the roadmap</string>
     <string name="status_projection_failed">MediaProjection failed</string>
     <string name="status_permission_denied">Screen permission denied</string>
+    <string name="notif_channel">Screen streaming</string>
+    <string name="notif_title">Tasirin Cast</string>
+    <string name="notif_text">Streaming screen is active</string>
+    <string name="notif_stop">Stop</string>
     <string name="log_label">Realtime Log</string>
     <string name="log_autoscroll">Auto-scroll</string>
     <string name="log_copy">Copy</string>

@@ -1,5 +1,15 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Fix force close + dukungan Android 14
+
+- Perbaikan force close saat memulai sender: pembukaan UDP port kini dibungkus
+  try/catch — kalau port `45555` sudah dipakai (mis. receiver jalan di HP yang
+  sama), muncul status error, bukan crash.
+- Foreground service `mediaProjection` (`CastService`): wajib sejak Android 14
+  (targetSdk 36) sebelum `MediaProjection.createVirtualDisplay` dipanggil.
+- Streaming kini berjalan di background service + notifikasi dengan tombol
+  Stop; tombol di activity hanya memulai/menghentikan service.
+
 ## [v1.0 — 2026-08-14] — Streaming H.264 via UDP
 
 - Implementasi streaming penuh: sender (MediaProjection → VirtualDisplay →

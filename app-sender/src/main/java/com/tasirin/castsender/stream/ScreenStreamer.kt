@@ -46,10 +46,18 @@ class ScreenStreamer(
 
     fun start() {
         running = true
-        val sock = DatagramSocket(null).apply {
-            reuseAddress = true
-            bind(InetSocketAddress(Protocol.DEFAULT_PORT))
-            broadcast = true
+        val sock = try {
+            DatagramSocket(null).apply {
+                reuseAddress = true
+                bind(InetSocketAddress(Protocol.DEFAULT_PORT))
+                broadcast = true
+            }
+        } catch (e: Exception) {
+            running = false
+            CastLog.event("Gagal membuka port ${Protocol.DEFAULT_PORT}: ${e.message}")
+            onStatus("Gagal: ${e.message}")
+            runCatching { projection.stop() }
+            return
         }
         socket = sock
 

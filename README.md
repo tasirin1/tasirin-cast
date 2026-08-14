@@ -39,7 +39,9 @@ HP pengirim (app-sender)                    HP penerima (app-receiver)
 ```
 
 - **Sender**: tangkap layar via `MediaProjection` → encode H.264 (tanpa B-frame,
-  bitrate mode CQ) → potong paket UDP kecil → kirim.
+  bitrate mode CQ) → potong paket UDP kecil → kirim. Sejak Android 14 memakai
+  foreground service `mediaProjection` (wajib untuk targetSdk 34+), jadi streaming
+  tetap jalan saat app di background.
 - **Receiver**: terima UDP → urutkan di jitter buffer → decode → render langsung
   ke `SurfaceView`.
 - **Anti-loss**: receiver kirim paket *request keyframe* balik ke sender saat ada
