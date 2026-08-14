@@ -1,5 +1,15 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Fix streaming tidak jalan (projection hilang)
+
+- MediaProjection kini dibuat langsung di MainActivity (konsen dialog masih
+  segar) lalu diserahkan ke foreground service via static bridge — tidak lagi
+  lewat `putExtra`/`getParcelableExtra` yang bisa membuat token projection
+  hilang saat re-parcel (gejala: log "Streaming dimulai" tapi tidak ada apa-apa).
+- Service mencatat log tiap langkah (FGS aktif, projection diterima/kosong,
+  error lengkap) — semua kegagalan kini terlihat di Realtime Log.
+- Status sender menampilkan "Mencari receiver…" saat broadcast discovery jalan.
+
 ## [v1.0 — 2026-08-14] — Fix force close + dukungan Android 14
 
 - Perbaikan force close saat memulai sender: pembukaan UDP port kini dibungkus

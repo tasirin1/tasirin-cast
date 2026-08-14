@@ -60,6 +60,7 @@ class ScreenStreamer(
             return
         }
         socket = sock
+        CastLog.event("Port ${Protocol.DEFAULT_PORT} dibuka — menunggu target")
 
         // Thread kontrol: terima ACK discovery & permintaan keyframe.
         Thread {
@@ -90,6 +91,7 @@ class ScreenStreamer(
             targetQueue.offer(targetIp)
         } else {
             CastLog.event("Mencari receiver (broadcast)…")
+            onStatus("Mencari receiver…")
             Thread {
                 val hello = Protocol.DISCOVERY_HELLO.toByteArray()
                 val broadcast = DatagramPacket(
@@ -115,6 +117,7 @@ class ScreenStreamer(
 
     private fun startCodecAndSend(target: InetAddress, sock: DatagramSocket) {
         try {
+            CastLog.event("Menyiapkan encoder H.264 untuk ${target.hostAddress}")
             val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
             val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)

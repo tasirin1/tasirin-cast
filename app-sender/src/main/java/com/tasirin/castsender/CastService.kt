@@ -8,7 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.media.projection.MediaProjectionManager
+import android.media.projection.MediaProjection
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -18,9 +18,9 @@ import java.net.InetAddress
 
 /**
  * Foreground service sender: wajib sejak Android 14 (targetSdk 34+) sebelum
- * MediaProjection.createVirtualDisplay dipanggil. Service ini yang membuat
- * MediaProjection + ScreenStreamer, lalu menjalankan streaming di background
- * (dengan notifikasi berisi tombol Stop).
+ * MediaProjection.createVirtualDisplay dipanggil. MediaProjection dibuat di
+ * MainActivity (konsen dialog masih segar, tanpa melewati parcel Intent) lalu
+ * diserahkan lewat [pendingProjection]; service menghidupkan FGS + streamer.
  */
 class CastService : Service() {
 
@@ -41,30 +41,31 @@ class CastService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        startInForeground()
-
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, -1) ?: -1
-        val resultData: Intent? = if (Build.VERSION.SDK_INT >= 33) {
-            intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent?.getParcelableExtra(EXTRA_RESULT_DATA)
-        }
-        if (resultCode > 0 && resultData != null && streamer == null) {
-            val pm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            val projection = pm.getMediaProjection(resultCode, resultData)
-            if (projection != null) {
+        try {
+            startInForeground()
+            CastLog.event("Foreground service aktif — mengambil projection dari activity")
+            val projection = pendingProjection
+            pendingProjection = null
+            if (projection == null) {
+                CastLog.event("ERROR service: projection kosong — streaming dibatalkan")
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            if (streamer == null) {
                 val ip = intent?.getStringExtra(EXTRA_TARGET_IP).orEmpty()
                 val targetIp = if (ip.isEmpty()) null else runCatching { InetAddress.getByName(ip) }.getOrNull()
                 val s = ScreenStreamer(this, projection, targetIp) { msg -> onStatus?.invoke(msg) }
                 streamer = s
                 s.start()
                 isStreaming = true
-                CastLog.event("Foreground service aktif — streaming berjalan")
+                CastLog.event("Streaming berjalan di foreground service")
             } else {
-                CastLog.event("Gagal membuat MediaProjection di service")
-                stopSelf()
+                CastLog.event("Streaming sudah berjalan — projection cadangan dihentikan")
+                runCatching { projection.stop() }
             }
+        } catch (t: Throwable) {
+            CastLog.event("ERROR service: ${t.javaClass.simpleName}: ${t.message}")
+            stopSelf()
         }
         return START_NOT_STICKY
     }
@@ -90,6 +91,8 @@ class CastService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+        }.onFailure {
+            CastLog.event("ERROR startForeground: ${it.message}")
         }
     }
 
@@ -113,13 +116,15 @@ class CastService : Service() {
     }
 
     companion object {
-        const val EXTRA_RESULT_CODE = "result_code"
-        const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_TARGET_IP = "target_ip"
 
         private const val ACTION_STOP = "com.tasirin.castsender.action.STOP"
         private const val CHANNEL_ID = "cast_streaming"
         private const val NOTIFICATION_ID = 1001
+
+        /** MediaProjection dari dialog konsen — diset MainActivity sebelum start service. */
+        @Volatile
+        var pendingProjection: MediaProjection? = null
 
         @Volatile
         var isStreaming = false
