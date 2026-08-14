@@ -27,9 +27,14 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private var surfaceTexture: SurfaceTexture? = null
     private var layoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
 
-    // Ukuran video default; diperbarui saat decoder melaporkan ukuran asli.
+    // Ukuran frame video; diperbarui saat decoder melaporkan ukuran asli.
     private var videoWidth = 1280
     private var videoHeight = 720
+
+    // Ukuran layar asli sender (dari paket SCREEN_INFO); aspek tampilan
+    // mengikuti ini supaya gambar tidak gepeng walau encoder/decoder menjepit.
+    private var screenWidth = 1280
+    private var screenHeight = 720
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,6 +85,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             s,
             onStatus = { msg -> setStatus(msg) },
             onVideoSize = { w, h -> handleVideoSize(w, h) },
+            onScreenSize = { w, h -> handleScreenSize(w, h) },
         )
         receiver = r
         r.start()
@@ -108,6 +114,18 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
     // Dipanggil dari thread decoder saat ukuran output berubah (resolusi asli
     // streaming, misal 1080p). Semua akses view di posting ke main thread.
+    private fun handleScreenSize(w: Int, h: Int) {
+        if (w <= 0 || h <= 0) return
+        runOnUiThread {
+            if (screenWidth != w || screenHeight != h) {
+                screenWidth = w
+                screenHeight = h
+                updateTextureTransform()
+                CastLog.event("Aspek layar sender disetel ke ${w}x${h}")
+            }
+        }
+    }
+
     private fun handleVideoSize(w: Int, h: Int) {
         if (w <= 0 || h <= 0) return
         runOnUiThread {
@@ -152,21 +170,27 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     /**
-     * Video dirender ke buffer SurfaceTexture berukuran video asli. Transform
-     * ini memetakan buffer tersebut secara fit-center ke view — tidak lagi
-     * meregang/"tertekan" ke atas atau terpotong.
+     * Video dirender ke buffer SurfaceTexture berukuran frame (videoWidth x
+     * videoHeight). Transform ini:
+     * 1) meregangkan buffer ke aspek layar sender (screenWidth x screenHeight)
+     *    — mengoreksi encoder/decoder yang menjepit resolusi (mis. 720x1600
+     *    menjadi 720x1088) sehingga isi layar tidak gepeng;
+     * 2) memetakannya fit-center ke view.
      */
     private fun updateTextureTransform() {
         val view = binding.textureView
         val viewW = view.width.toFloat()
         val viewH = view.height.toFloat()
         if (viewW <= 0f || viewH <= 0f) return
-        val videoW = videoWidth.toFloat()
-        val videoH = videoHeight.toFloat()
-        val scale = min(viewW / videoW, viewH / videoH)
+        val bufW = videoWidth.toFloat()
+        val bufH = videoHeight.toFloat()
+        val scrW = screenWidth.toFloat()
+        val scrH = screenHeight.toFloat()
+        val fit = min(viewW / scrW, viewH / scrH)
         val matrix = Matrix()
-        matrix.postScale(scale, scale)
-        matrix.postTranslate((viewW - videoW * scale) / 2f, (viewH - videoH * scale) / 2f)
+        matrix.postScale(scrW / bufW, scrH / bufH)
+        matrix.postScale(fit, fit)
+        matrix.postTranslate((viewW - scrW * fit) / 2f, (viewH - scrH * fit) / 2f)
         view.setTransform(matrix)
     }
 

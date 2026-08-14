@@ -1,3 +1,12 @@
+## [v1.0 — 2026-08-14] — Koreksi aspek layar di receiver (fix gepeng & geser)
+
+- Sender mengirim ukuran layar aslinya ke receiver (paket kontrol
+  SCREEN_INFO) setelah discovery — sekali, di awal stream.
+- Receiver menampilkan video dengan transform yang meregangkan frame ke
+  aspek layar sender lalu fit-center — encoder/decoder yang menjepit
+  resolusi (mis. 720x1600 menjadi 720x1088) tidak lagi membuat gambar
+  gepeng/bergeser; mode potret tampil utuh di tengah.
+
 ## [v1.0 — 2026-08-14] — Capture ikut aspek layar + buffer texture stabil
 
 - Sender: resolusi capture mengikuti aspek layar asli — mode potret kini

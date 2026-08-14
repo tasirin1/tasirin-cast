@@ -23,6 +23,7 @@ class ScreenReceiver(
     private val surface: Surface,
     private val onStatus: (String) -> Unit,
     private val onVideoSize: (Int, Int) -> Unit = { _, _ -> },
+    private val onScreenSize: (Int, Int) -> Unit = { _, _ -> },
 ) {
     private val frameQueue = LinkedBlockingQueue<com.tasirin.cast.protocol.Frame>(32)
     private val jitter = JitterBuffer()
@@ -88,6 +89,21 @@ class ScreenReceiver(
                         val pkt = DatagramPacket(buf, buf.size)
                         vs.receive(pkt)
                         lastSender = pkt.address
+                        // Paket kontrol dari sender (bukan video): info ukuran
+                        // layar asli untuk koreksi aspek tampilan.
+                        val raw = buf.copyOf(pkt.length)
+                        if (pkt.length == Protocol.SCREEN_INFO_SIZE &&
+                            raw[0] == 0x54.toByte() && raw[1] == 0x43.toByte() &&
+                            raw[2] == Protocol.SCREEN_INFO_CMD
+                        ) {
+                            val sw = ((raw[3].toInt() and 0xFF) shl 8) or (raw[4].toInt() and 0xFF)
+                            val sh = ((raw[5].toInt() and 0xFF) shl 8) or (raw[6].toInt() and 0xFF)
+                            if (sw > 0 && sh > 0) {
+                                onScreenSize(sw, sh)
+                                CastLog.event("Layar sender: ${sw}x${sh}")
+                            }
+                            continue
+                        }
                         if (pkt.length < Protocol.HEADER_SIZE) continue
                         val header = PacketHeader.from(buf)
                         if (header == null) {

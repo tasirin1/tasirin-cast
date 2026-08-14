@@ -37,6 +37,23 @@ object Protocol {
     /** Command kontrol: minta keyframe (paket 3 byte: "TC" + cmd). */
     const val KEYFRAME_REQUEST_CMD: Byte = 0x01
 
+    /** Command kontrol: info ukuran layar sender (paket 7 byte: "TC" + cmd + w + h). */
+    const val SCREEN_INFO_CMD: Byte = 0x02
+
+    /** Ukuran paket info layar: 2 magic + 1 cmd + 2 lebar + 2 tinggi. */
+    const val SCREEN_INFO_SIZE = 7
+
+    /**
+     * Bungkus info ukuran layar asli sender. Dikirim sekali setelah discovery
+     * supaya receiver bisa mengoreksi aspek tampilan (potret/lanskap) walau
+     * encoder/decoder menjepit resolusi (mis. 720x1600 -> 720x1088).
+     */
+    fun screenInfoBytes(width: Int, height: Int): ByteArray = byteArrayOf(
+        0x54, 0x43, SCREEN_INFO_CMD,
+        ((width shr 8) and 0xFF).toByte(), (width and 0xFF).toByte(),
+        ((height shr 8) and 0xFF).toByte(), (height and 0xFF).toByte(),
+    )
+
     /** Pesan discovery. */
     const val DISCOVERY_HELLO = "TC-HI"
     const val DISCOVERY_ACK = "TC-OK"

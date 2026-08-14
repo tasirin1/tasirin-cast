@@ -36,6 +36,8 @@ class ScreenStreamer(
     // Resolusi capture mengikuti aspek layar asli (mode potret = video
     // potret, tidak lagi diregangkan jadi 16:9), diskalakan agar sisi
     // terpanjang tidak melebihi preset kualitas.
+    private val screenW: Int
+    private val screenH: Int
     private val width: Int
     private val height: Int
     private val dpi: Int
@@ -43,8 +45,8 @@ class ScreenStreamer(
 
     init {
         val dm = context.resources.displayMetrics
-        val screenW = dm.widthPixels
-        val screenH = dm.heightPixels
+        screenW = dm.widthPixels
+        screenH = dm.heightPixels
         val longSide = maxOf(screenW, screenH)
         val scale = min(1f, quality.maxDimension.toFloat() / longSide)
         // Genapkan ukuran (kelipatan 2) supaya aman untuk encoder.
@@ -153,6 +155,13 @@ class ScreenStreamer(
         sendThread = Thread {
             val target = runCatching { targetQueue.take() }.getOrNull() ?: return@Thread
             if (!running) return@Thread
+            // Info ukuran layar dikirim lebih dulu supaya receiver bisa
+            // mengoreksi aspek tampilan (potret/lanskap).
+            runCatching {
+                val info = Protocol.screenInfoBytes(screenW, screenH)
+                sock.send(DatagramPacket(info, info.size, target, Protocol.DEFAULT_PORT))
+                CastLog.event("Info layar ${screenW}x${screenH} dikirim ke receiver")
+            }
             startCodecAndSend(target, sock)
         }.apply { isDaemon = true; start() }
         return true
