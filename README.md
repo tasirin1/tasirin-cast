@@ -82,4 +82,4 @@ Butuh **JDK 17** dan **Android SDK** (compileSdk 36, minSdk 21).
 
 ## Lisensi
 
-[MIT](LICENSE) © 2026 tasirin
+[GPL-3.0](LICENSE) © 2026 tasirin
