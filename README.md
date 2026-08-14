@@ -56,17 +56,19 @@ HP pengirim (app-sender)                    HP penerima (app-receiver)
 ## Protokol
 
 - Transport: **UDP unicast**, port default `45555` (konstanta `Protocol.DEFAULT_PORT`).
-- Header 8 byte: magic `"TC"` + versi + flag (keyframe) + sequence + ukuran payload.
+- Header 12 byte: magic `"TC"` + versi + flags (frame-start) + sequence
+  (wrap-around) + timestamp (ms) + ukuran payload.
 - Paket ≤ 1200 byte (di bawah MTU, hindari fragmentasi).
-- Sender mulai kirim dari IDR (keyframe) agar receiver bisa langsung decode.
+- Discovery: broadcast `TC-HI` di port `45556` → receiver balas `TC-OK`.
+- Anti-loss: receiver minta keyframe balik saat ada paket hilang.
 
 ## Peta jalan
 
 - [x] Scaffold monorepo (sender + receiver + protocol)
-- [ ] Sender: MediaProjection + encoder H.264 via Surface
-- [ ] Receiver: jitter buffer + decoder H.264 + SurfaceView
-- [ ] Discovery otomatis (UDP broadcast) + fallback input IP manual
-- [ ] Keyframe request saat loss
+- [x] Sender: MediaProjection + encoder H.264 via Surface
+- [x] Receiver: jitter buffer + decoder H.264 + SurfaceView
+- [x] Discovery otomatis (UDP broadcast) + fallback input IP manual
+- [x] Keyframe request saat loss
 - [ ] Audio (mic / aplikasi sendiri — catatan: capture audio internal butuh API 29+)
 - [ ] Mode tanpa router (hotspot receiver / Wi-Fi Direct)
 

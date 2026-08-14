@@ -2,8 +2,13 @@
     <string name="app_name">Tasirin Cast Sender</string>
     <string name="status_ready">Ready — UDP port %1$d</string>
     <string name="btn_start">Start streaming</string>
+    <string name="btn_stop">Stop</string>
     <string name="btn_log">Realtime Log</string>
+    <string name="et_ip_hint">Receiver IP (empty = auto-discover)</string>
+    <string name="toast_invalid_ip">Invalid receiver IP</string>
     <string name="toast_not_implemented">Streaming implementation is on the roadmap</string>
+    <string name="status_projection_failed">MediaProjection failed</string>
+    <string name="status_permission_denied">Screen permission denied</string>
     <string name="log_label">Realtime Log</string>
     <string name="log_autoscroll">Auto-scroll</string>
     <string name="log_copy">Copy</string>

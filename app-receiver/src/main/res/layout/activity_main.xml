@@ -13,6 +13,14 @@
         android:textSize="14sp" />
 
     <Button
+        android:id="@+id/btnStart"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:text="@string/btn_start" />
+
+    <Button
         android:id="@+id/btnLog"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

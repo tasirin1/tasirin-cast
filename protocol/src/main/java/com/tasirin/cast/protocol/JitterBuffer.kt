@@ -10,31 +10,31 @@ package com.tasirin.cast.protocol
  * - Paket duplikat / sudah lewat dari urutan sekarang dibuang.
  * - Kapasitas dibatasi; paket tertua dibuang saat penuh.
  */
-class JitterBuffer(private val capacity: Int = 64) {
+class JitterBuffer(private val capacity: Int = 128) {
 
-    private val packets = LinkedHashMap<UShort, ByteArray>()
+    private val packets = LinkedHashMap<UShort, Packet>()
     private var expected: UShort? = null
 
     /** Simpan paket; false jika duplikat / sudah lewat / buffer penuh. */
-    fun offer(seq: UShort, payload: ByteArray): Boolean {
+    fun offer(header: PacketHeader, payload: ByteArray): Boolean {
         val exp = expected
-        if (exp != null && !isAfterOrEqual(seq, exp)) return false
-        if (packets.containsKey(seq)) return false
+        if (exp != null && !isAfterOrEqual(header.seq, exp)) return false
+        if (packets.containsKey(header.seq)) return false
         if (packets.size >= capacity) {
             val oldest = packets.keys.firstOrNull() ?: return false
             packets.remove(oldest)
         }
-        packets[seq] = payload
+        packets[header.seq] = Packet(header, payload)
         reorder()
         return true
     }
 
     /** Ambil paket berikutnya secara berurutan; null jika kosong. */
-    fun poll(): ByteArray? {
+    fun poll(): Packet? {
         val head = packets.keys.firstOrNull() ?: return null
-        val payload = packets.remove(head)
+        val packet = packets.remove(head)
         expected = head
-        return payload
+        return packet
     }
 
     val size: Int get() = packets.size
@@ -46,7 +46,7 @@ class JitterBuffer(private val capacity: Int = 64) {
         } else {
             packets.keys.sortedBy { it.toInt() }
         }
-        val reordered = LinkedHashMap<UShort, ByteArray>(sorted.size)
+        val reordered = LinkedHashMap<UShort, Packet>(sorted.size)
         for (key in sorted) reordered[key] = packets.getValue(key)
         packets.clear()
         packets.putAll(reordered)

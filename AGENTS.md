@@ -10,12 +10,17 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
 ├── .github/workflows/build.yml       # CI: bump versionCode → build 2 APK → lint/test → artifact
 ├── .github/PULL_REQUEST_TEMPLATE.md  # Template PR (wajib ringkasan + verifikasi)
 ├── app-sender/build.gradle.kts       # Transmitter: MediaProjection + MediaCodec + UDP
+│   └── stream/ScreenStreamer.kt      # Capture → encode H.264 → packetizer → UDP
 │   └── LogActivity.kt                # Log realtime + ekspor TXT
 ├── app-receiver/build.gradle.kts     # Receiver: UDP + jitter buffer + MediaCodec + SurfaceView
+│   └── net/ScreenReceiver.kt         # UDP → jitter → assembler → decoder → Surface
 │   └── LogActivity.kt                # Log realtime + ekspor TXT
 ├── protocol/build.gradle.kts         # Library bersama: framing UDP, header, jitter buffer
 │   ├── RealtimeLog.kt                # Buffer log aman multi-thread
 │   └── CastLog.kt                    # Log realtime per-proses app (object)
+│   ├── Protocol.kt / PacketHeader.kt # Konstanta + header 12 byte bersama
+│   ├── Packetizer.kt / FrameAssembler.kt  # Pecah & rakit frame jadi chunk UDP
+│   └── JitterBuffer.kt               # Urutkan paket, buang duplikat/lama
 ├── CHANGELOG.md                       # Riwayat perubahan per rilis (update manual)
 ├── settings.gradle.kts               # rootProject "TasirinCast"; include 3 modul
 └── gradle wrapper                    # build via ./gradlew (CI saja untuk rilis)
@@ -26,7 +31,8 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
 - **Sender** (`app-sender`): `MediaProjection` → `VirtualDisplay` + `InputSurface`
   → `MediaCodec` (H.264, tanpa B-frame, bitrate mode CQ) → packetizer UDP (≤1200 B).
 - **Receiver** (`app-receiver`): UDP socket → `JitterBuffer` (urutkan seq,
-  buang duplikat) → `MediaCodec` decoder mode async → render ke `SurfaceView`.
+  buang duplikat) → `FrameAssembler` (rakit frame utuh) → `MediaCodec` decoder
+  (thread drain render) → `SurfaceView`.
 - **Protokol** (`protocol`): semua konstanta & format paket di sini — sender dan
   receiver WAJIB sinkron byte-per-byte. Perubahan protokol = perubahan satu commit.
 - **Anti-loss**: receiver mengirim paket *request keyframe* (IDR) saat ada paket
@@ -77,4 +83,3 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
 | `KEYSTORE_PASSWORD` | password store keystore |
 | `KEY_ALIAS` | alias kunci |
 | `KEY_PASSWORD` | password kunci |
-

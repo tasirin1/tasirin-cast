@@ -3,29 +3,32 @@ package com.tasirin.cast.protocol
 import java.nio.ByteBuffer
 
 /**
- * Header paket UDP bersama (8 byte, big-endian):
+ * Header paket UDP bersama (12 byte, big-endian):
  *
  * ```
- * 0      1      2      3      4      5      6      7
- * magic  magic  versi  flags  seq_H  seq_L  size_H size_L
+ * 0      1      2      3      4      5      6      7      8      9     10     11
+ * magic  magic  versi  flags  seq_H  seq_L  ts_0   ts_1   ts_2   ts_3   sizeH  sizeL
  * ```
  *
  * - `magic` — 2 byte "TC" ([Protocol.MAGIC]).
  * - `versi` — 1 byte [Protocol.VERSION].
- * - `flags` — bit0 = keyframe ([Protocol.FLAG_KEYFRAME]).
+ * - `flags` — bit0 = awal frame ([Protocol.FLAG_FRAME_START]).
  * - `seq` — 2 byte, urutan paket (wrap-around UShort).
+ * - `timestampMs` — 4 byte, waktu encode frame (ms, monotonik).
  * - `payloadSize` — 2 byte, ukuran payload setelah header.
  */
 data class PacketHeader(
     val seq: UShort,
-    val isKeyframe: Boolean,
+    val isFrameStart: Boolean,
+    val timestampMs: UInt,
     val payloadSize: UShort,
 ) {
     fun toByteArray(): ByteArray = ByteBuffer.allocate(Protocol.HEADER_SIZE).apply {
         putShort(Protocol.MAGIC)
         put(Protocol.VERSION.toByte())
-        put((if (isKeyframe) Protocol.FLAG_KEYFRAME else 0).toByte())
+        put((if (isFrameStart) Protocol.FLAG_FRAME_START else 0).toByte())
         putShort(seq.toShort())
+        putInt(timestampMs.toInt())
         putShort(payloadSize.toShort())
     }.array()
 
@@ -38,8 +41,9 @@ data class PacketHeader(
             if (buf.get().toInt() != Protocol.VERSION) return null
             val flags = buf.get().toInt()
             val seq = buf.short.toUShort()
+            val timestampMs = buf.int.toUInt()
             val payloadSize = buf.short.toUShort()
-            return PacketHeader(seq, flags and Protocol.FLAG_KEYFRAME != 0, payloadSize)
+            return PacketHeader(seq, flags and Protocol.FLAG_FRAME_START != 0, timestampMs, payloadSize)
         }
     }
 }

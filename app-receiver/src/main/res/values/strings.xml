@@ -1,6 +1,10 @@
 <resources>
     <string name="app_name">Tasirin Cast Receiver</string>
     <string name="status_waiting">Waiting for stream on UDP port %1$d</string>
+    <string name="status_starting">Listening on UDP port %1$d — start the sender app</string>
+    <string name="btn_start">Start receiving</string>
+    <string name="btn_stop">Stop</string>
+    <string name="toast_surface_not_ready">Video surface not ready yet</string>
     <string name="hint_video">Video will appear here</string>
     <string name="btn_log">Realtime Log</string>
     <string name="log_label">Realtime Log</string>
