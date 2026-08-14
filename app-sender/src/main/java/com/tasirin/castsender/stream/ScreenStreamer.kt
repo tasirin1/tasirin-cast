@@ -151,6 +151,7 @@ class ScreenStreamer(
             // MediaCodec.Callback (callback butuh Looper & rawan bug OEM).
             val info = MediaCodec.BufferInfo()
             var framesSent = 0L
+            var configBytes: ByteArray? = null
             while (running) {
                 when (val out = enc.dequeueOutputBuffer(info, 100_000)) {
                     MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
@@ -164,11 +165,20 @@ class ScreenStreamer(
                                 buffer.get(bytes)
                                 val timestampMs = (info.presentationTimeUs / 1000).toUInt()
                                 val isConfig = (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
-                                // SPS/PPS wajib dikirim: tanpa itu decoder receiver tidak bisa decode.
-                                for (packet in packetizer.packetsFor(bytes, timestampMs, isCodecConfig = isConfig)) {
-                                    sendQueue.put(packet)
-                                }
-                                if (!isConfig) {
+                                if (isConfig) {
+                                    configBytes = bytes
+                                    // SPS/PPS dikirim sendiri dulu (receiver bisa pakai csd-0),
+                                    // lalu ditempel juga ke keyframe berikutnya (in-band) —
+                                    // decoder yang mengabaikan buffer config tetap bisa mulai.
+                                    for (packet in packetizer.packetsFor(bytes, timestampMs, isCodecConfig = true)) {
+                                        sendQueue.put(packet)
+                                    }
+                                } else {
+                                    val isKey = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
+                                    val payload = if (isKey && configBytes != null) configBytes!! + bytes else bytes
+                                    for (packet in packetizer.packetsFor(payload, timestampMs)) {
+                                        sendQueue.put(packet)
+                                    }
                                     framesSent++
                                     if (framesSent % 30 == 0L) {
                                         CastLog.event("Frame terkirim: $framesSent")

@@ -1,5 +1,11 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — SPS/PPS in-band di setiap keyframe
+
+- Sender menyimpan SPS/PPS lalu menempelkannya ke setiap keyframe (in-band)
+  — decoder yang mengabaikan buffer config terpisah tetap bisa mulai decode.
+- Keyframe request saat loss otomatis membawa SPS/PPS lagi (self-healing).
+
 ## [v1.0 — 2026-08-14] — Diagnosa receiver + perbaikan frame terbuang
 
 - Receiver mencatat paket yang ditolak (magic/versi protokol) — kalau receiver
