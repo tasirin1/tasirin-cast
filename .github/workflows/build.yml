@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      VT_API_KEY: ${{ secrets.VT_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -87,10 +88,8 @@ jobs:
           path: app-receiver/build/outputs/apk/release/app-receiver-release.apk
 
       - name: VirusTotal scan (cek false-positive antivirus)
-        if: env.KEYSTORE_BASE64 != '' && secrets.VT_API_KEY != ''
+        if: env.KEYSTORE_BASE64 != '' && env.VT_API_KEY != ''
         continue-on-error: true
-        env:
-          VT_API_KEY: ${{ secrets.VT_API_KEY }}
         run: |
           for APK in app-sender/build/outputs/apk/release/app-sender-release.apk app-receiver/build/outputs/apk/release/app-receiver-release.apk; do
             [ -f "$APK" ] || continue
