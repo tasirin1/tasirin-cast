@@ -7,6 +7,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.projection.MediaProjection
+import android.os.Bundle
 import com.tasirin.cast.protocol.CastLog
 import com.tasirin.cast.protocol.Packetizer
 import com.tasirin.cast.protocol.Protocol
@@ -25,7 +26,7 @@ import java.util.concurrent.TimeUnit
 class ScreenStreamer(
     context: Context,
     private val projection: MediaProjection,
-    targetIp: InetAddress?,
+    private val targetIp: InetAddress?,
     private val onStatus: (String) -> Unit,
 ) {
     private val width = 1280
@@ -180,7 +181,7 @@ class ScreenStreamer(
     private fun requestSyncFrame() {
         runCatching {
             codec?.setParameters(
-                MediaFormat().apply { setInteger(MediaFormat.KEY_REQUEST_SYNC_FRAME, 0) }
+                Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) }
             )
         }
     }
