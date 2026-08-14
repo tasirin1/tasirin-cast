@@ -14,6 +14,15 @@ class PacketHeaderTest {
     }
 
     @Test
+    fun roundTripFlagCodecConfig() {
+        val header = PacketHeader(seq = 7u, isFrameStart = true, timestampMs = 1u, payloadSize = 40u, isCodecConfig = true)
+        val decoded = PacketHeader.from(header.toByteArray())
+        assertEquals(true, decoded!!.isCodecConfig)
+        assertEquals(true, decoded.isFrameStart)
+        assertEquals(header, decoded)
+    }
+
+    @Test
     fun magicSalahDitolak() {
         val bytes = byteArrayOf(0, 0, Protocol.VERSION.toByte(), 0, 0, 0, 0, 0, 0, 0, 0, 0)
         assertNull(PacketHeader.from(bytes))

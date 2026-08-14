@@ -157,25 +157,25 @@ class ScreenStreamer(
                     MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> Unit
                     else -> {
                         if (out >= 0) {
-                            if ((info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                                enc.releaseOutputBuffer(out, false)
-                            } else {
-                                val buffer = enc.getOutputBuffer(out)
-                                if (buffer != null) {
-                                    val bytes = ByteArray(info.size)
-                                    buffer.position(info.offset)
-                                    buffer.get(bytes)
-                                    val timestampMs = (info.presentationTimeUs / 1000).toUInt()
-                                    for (packet in packetizer.packetsFor(bytes, timestampMs)) {
-                                        sendQueue.put(packet)
-                                    }
+                            val buffer = enc.getOutputBuffer(out)
+                            if (buffer != null) {
+                                val bytes = ByteArray(info.size)
+                                buffer.position(info.offset)
+                                buffer.get(bytes)
+                                val timestampMs = (info.presentationTimeUs / 1000).toUInt()
+                                val isConfig = (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+                                // SPS/PPS wajib dikirim: tanpa itu decoder receiver tidak bisa decode.
+                                for (packet in packetizer.packetsFor(bytes, timestampMs, isCodecConfig = isConfig)) {
+                                    sendQueue.put(packet)
+                                }
+                                if (!isConfig) {
                                     framesSent++
                                     if (framesSent % 30 == 0L) {
                                         CastLog.event("Frame terkirim: $framesSent")
                                     }
                                 }
-                                enc.releaseOutputBuffer(out, false)
                             }
+                            enc.releaseOutputBuffer(out, false)
                         }
                     }
                 }

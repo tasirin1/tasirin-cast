@@ -22,15 +22,23 @@ data class PacketHeader(
     val isFrameStart: Boolean,
     val timestampMs: UInt,
     val payloadSize: UShort,
+    val isCodecConfig: Boolean = false,
 ) {
     fun toByteArray(): ByteArray = ByteBuffer.allocate(Protocol.HEADER_SIZE).apply {
         putShort(Protocol.MAGIC)
         put(Protocol.VERSION.toByte())
-        put((if (isFrameStart) Protocol.FLAG_FRAME_START else 0).toByte())
+        put(flags().toByte())
         putShort(seq.toShort())
         putInt(timestampMs.toInt())
         putShort(payloadSize.toShort())
     }.array()
+
+    private fun flags(): Int {
+        var f = 0
+        if (isFrameStart) f = f or Protocol.FLAG_FRAME_START
+        if (isCodecConfig) f = f or Protocol.FLAG_CODEC_CONFIG
+        return f
+    }
 
     companion object {
         /** Dekode header dari awal [bytes]. Mengembalikan null jika format tidak valid. */
@@ -43,7 +51,13 @@ data class PacketHeader(
             val seq = buf.short.toUShort()
             val timestampMs = buf.int.toUInt()
             val payloadSize = buf.short.toUShort()
-            return PacketHeader(seq, flags and Protocol.FLAG_FRAME_START != 0, timestampMs, payloadSize)
+            return PacketHeader(
+                seq = seq,
+                isFrameStart = flags and Protocol.FLAG_FRAME_START != 0,
+                timestampMs = timestampMs,
+                payloadSize = payloadSize,
+                isCodecConfig = flags and Protocol.FLAG_CODEC_CONFIG != 0,
+            )
         }
     }
 }

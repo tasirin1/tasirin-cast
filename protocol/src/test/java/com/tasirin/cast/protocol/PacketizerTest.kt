@@ -34,6 +34,14 @@ class PacketizerTest {
     }
 
     @Test
+    fun configMenandaiChunkPertama() {
+        val p = Packetizer()
+        val packets = p.packetsFor(ByteArray(64), timestampMs = 1u, isCodecConfig = true)
+        assertEquals(true, PacketHeader.from(packets[0])!!.isCodecConfig)
+        assertEquals(true, PacketHeader.from(packets[0])!!.isFrameStart)
+    }
+
+    @Test
     fun chunkTerakhirLebihKecilDariMaksimum() {
         val p = Packetizer()
         val packets = p.packetsFor(ByteArray(Protocol.MAX_CHUNK + 5), timestampMs = 0u)

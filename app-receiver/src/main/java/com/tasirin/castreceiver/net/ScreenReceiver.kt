@@ -133,7 +133,8 @@ class ScreenReceiver(
                 val input = dec.getInputBuffer(inIdx) ?: continue
                 input.clear()
                 input.put(frame.data)
-                dec.queueInputBuffer(inIdx, 0, frame.data.size, frame.timestampMs.toLong() * 1000, 0)
+                val flags = if (frame.isCodecConfig) MediaCodec.BUFFER_FLAG_CODEC_CONFIG else 0
+                dec.queueInputBuffer(inIdx, 0, frame.data.size, frame.timestampMs.toLong() * 1000, flags)
             }
         } catch (e: Exception) {
             CastLog.event("ERROR decoder: ${e.message}")

@@ -17,10 +17,13 @@ object Protocol {
     const val MAGIC: Short = 0x5443
 
     /** Versi protokol — naikkan saat format header berubah. */
-    const val VERSION = 2
+    const val VERSION = 3
 
     /** Flag awal frame (frame start) pada byte flags header. */
     const val FLAG_FRAME_START = 0x01
+
+    /** Flag frame berisi konfigurasi codec (SPS/PPS) sebelum frame IDR pertama. */
+    const val FLAG_CODEC_CONFIG = 0x02
 
     /** Ukuran header paket dalam byte. */
     const val HEADER_SIZE = 12

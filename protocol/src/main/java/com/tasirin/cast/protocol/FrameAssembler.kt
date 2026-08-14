@@ -5,6 +5,7 @@ data class Frame(
     val isKeyframe: Boolean,
     val timestampMs: UInt,
     val data: ByteArray,
+    val isCodecConfig: Boolean = false,
 )
 
 /**
@@ -19,6 +20,7 @@ class FrameAssembler {
     private val chunks = ArrayList<ByteArray>()
     private var chunksSize = 0
     private var keyframe = false
+    private var codecConfig = false
     private var timestamp = 0u
 
     fun offer(packet: Packet): Frame? {
@@ -28,6 +30,7 @@ class FrameAssembler {
         }
         if (chunks.isEmpty()) {
             keyframe = header.isFrameStart
+            codecConfig = header.isCodecConfig
             timestamp = header.timestampMs
         }
         chunks.add(packet.payload)
@@ -41,7 +44,7 @@ class FrameAssembler {
                 }
             }
             reset()
-            return Frame(keyframe, timestamp, data)
+            return Frame(keyframe, timestamp, data, codecConfig)
         }
         return null
     }

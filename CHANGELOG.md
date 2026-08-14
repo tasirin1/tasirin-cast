@@ -1,5 +1,16 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Fix receiver layar hitam: SPS/PPS (codec config) dikirim
+
+- Penyebab: encoder Android mengirim SPS/PPS sebagai buffer terpisah
+  (`BUFFER_FLAG_CODEC_CONFIG`) yang sebelumnya dibuang sender → decoder
+  receiver tidak bisa memulai decode sama sekali (tidak ada tampilan).
+- Protokol v3: flag baru `FLAG_CODEC_CONFIG` di header; sender mengirim
+  konfigurasi sebagai frame bertanda, receiver memberikannya ke decoder
+  dengan flag `BUFFER_FLAG_CODEC_CONFIG`.
+- Unit test baru: round-trip flag codec config + packetizer menandai
+  chunk pertama.
+
 ## [v1.0 — 2026-08-14] — Fix MediaProjection callback wajib (Android 14)
 
 - Android 14 (targetSdk 34+) mewajibkan `MediaProjection.registerCallback()`
