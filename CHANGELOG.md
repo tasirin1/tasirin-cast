@@ -1,5 +1,12 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Fix MediaProjection callback wajib (Android 14)
+
+- Android 14 (targetSdk 34+) mewajibkan `MediaProjection.registerCallback()`
+  sebelum `createVirtualDisplay()` — tanpa itu `IllegalStateException:
+  Must register a callback before starting capture`.
+- Callback `onStop` menghentikan streaming bila sistem mematikan projection.
+
 ## [v1.0 — 2026-08-14] — Encoder: fallback konfigurasi + codec baru per percobaan
 
 - Perbaikan retry: sebelumnya codec yang sudah di-release dipakai ulang

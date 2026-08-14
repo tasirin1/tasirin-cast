@@ -7,8 +7,10 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.projection.MediaProjection
-import android.view.Surface
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.Surface
 import com.tasirin.cast.protocol.CastLog
 import com.tasirin.cast.protocol.Packetizer
 import com.tasirin.cast.protocol.Protocol
@@ -40,6 +42,15 @@ class ScreenStreamer(
     private var codec: MediaCodec? = null
     private var inputSurface: Surface? = null
     private var virtualDisplay: VirtualDisplay? = null
+
+    // Wajib sejak Android 14: callback MediaProjection didaftarkan SEBELUM
+    // createVirtualDisplay (kalau tidak, IllegalStateException).
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            CastLog.event("MediaProjection dihentikan oleh sistem")
+            stop()
+        }
+    }
     private var socket: DatagramSocket? = null
     @Volatile private var running = false
     @Volatile private var started = false
@@ -62,6 +73,9 @@ class ScreenStreamer(
         }
         socket = sock
         CastLog.event("Port ${Protocol.DEFAULT_PORT} dibuka — menunggu target")
+        runCatching {
+            projection.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
+        }
 
         // Thread kontrol: terima ACK discovery & permintaan keyframe.
         Thread {
@@ -250,6 +264,7 @@ class ScreenStreamer(
         runCatching { codec?.stop() }
         runCatching { codec?.release() }
         codec = null
+        runCatching { projection.unregisterCallback(projectionCallback) }
         runCatching { projection.stop() }
         sendQueue.clear()
         targetQueue.clear()
