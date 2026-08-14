@@ -44,7 +44,7 @@ class ScreenStreamer(
     @Volatile private var started = false
     private var sendThread: Thread? = null
 
-    fun start() {
+    fun start(): Boolean {
         running = true
         val sock = try {
             DatagramSocket(null).apply {
@@ -57,7 +57,7 @@ class ScreenStreamer(
             CastLog.event("Gagal membuka port ${Protocol.DEFAULT_PORT}: ${e.message}")
             onStatus("Gagal: ${e.message}")
             runCatching { projection.stop() }
-            return
+            return false
         }
         socket = sock
         CastLog.event("Port ${Protocol.DEFAULT_PORT} dibuka — menunggu target")
