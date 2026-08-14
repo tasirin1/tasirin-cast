@@ -23,8 +23,8 @@ data class PacketHeader(
 ) {
     fun toByteArray(): ByteArray = ByteBuffer.allocate(Protocol.HEADER_SIZE).apply {
         putShort(Protocol.MAGIC)
-        put(Protocol.VERSION)
-        put(if (isKeyframe) Protocol.FLAG_KEYFRAME else 0)
+        put(Protocol.VERSION.toByte())
+        put((if (isKeyframe) Protocol.FLAG_KEYFRAME else 0).toByte())
         putShort(seq.toShort())
         putShort(payloadSize.toShort())
     }.array()
