@@ -1,5 +1,6 @@
 package com.tasirin.castsender
 
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,7 +9,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -17,10 +18,13 @@ import com.tasirin.cast.protocol.CastLog
 import java.net.InetAddress
 
 /**
- * Foreground service sender: wajib sejak Android 14 (targetSdk 34+) sebelum
- * MediaProjection.createVirtualDisplay dipanggil. MediaProjection dibuat di
- * MainActivity (konsen dialog masih segar, tanpa melewati parcel Intent) lalu
- * diserahkan lewat [pendingProjection]; service menghidupkan FGS + streamer.
+ * Foreground service sender: sejak Android 10+ (targetSdk 29+), MediaProjection
+ * WAJIB dibuat dari foreground service bertipe `mediaProjection` — kalau tidak,
+ * `getMediaProjection`/`createVirtualDisplay` melempar SecurityException.
+ *
+ * Alur: MainActivity menerima konsen (dialog), lalu meneruskan resultCode +
+ * resultData ke service ini via Intent. Service: startForeground (FGS aktif)
+ * -> getMediaProjection -> ScreenStreamer (createVirtualDisplay + streaming).
  */
 class CastService : Service() {
 
@@ -43,25 +47,49 @@ class CastService : Service() {
         }
         try {
             startInForeground()
-            CastLog.event("Foreground service aktif — mengambil projection dari activity")
-            val projection = pendingProjection
-            pendingProjection = null
-            if (projection == null) {
-                CastLog.event("ERROR service: projection kosong — streaming dibatalkan")
+            CastLog.event("Foreground service aktif — membuat MediaProjection")
+
+            val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
+                ?: Activity.RESULT_CANCELED
+            val resultData: Intent? = if (Build.VERSION.SDK_INT >= 33) {
+                intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent?.getParcelableExtra(EXTRA_RESULT_DATA)
+            }
+            if (resultCode != Activity.RESULT_OK || resultData == null) {
+                CastLog.event("ERROR service: data konsen tidak valid (code=$resultCode)")
                 stopSelf()
                 return START_NOT_STICKY
             }
-            if (streamer == null) {
-                val ip = intent?.getStringExtra(EXTRA_TARGET_IP).orEmpty()
-                val targetIp = if (ip.isEmpty()) null else runCatching { InetAddress.getByName(ip) }.getOrNull()
-                val s = ScreenStreamer(this, projection, targetIp) { msg -> onStatus?.invoke(msg) }
-                streamer = s
-                s.start()
+            if (streamer != null) {
+                CastLog.event("Streaming sudah berjalan — abaikan start ganda")
+                return START_NOT_STICKY
+            }
+
+            val pm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            val projection = try {
+                pm.getMediaProjection(resultCode, resultData)
+            } catch (t: Throwable) {
+                CastLog.event("ERROR getMediaProjection: ${t.javaClass.simpleName}: ${t.message}")
+                null
+            }
+            if (projection == null) {
+                CastLog.event("Gagal membuat MediaProjection di service")
+                stopSelf()
+                return START_NOT_STICKY
+            }
+
+            val ip = intent?.getStringExtra(EXTRA_TARGET_IP).orEmpty()
+            val targetIp = if (ip.isEmpty()) null else runCatching { InetAddress.getByName(ip) }.getOrNull()
+            val s = ScreenStreamer(this, projection, targetIp) { msg -> onStatus?.invoke(msg) }
+            streamer = s
+            if (s.start()) {
                 isStreaming = true
                 CastLog.event("Streaming berjalan di foreground service")
             } else {
-                CastLog.event("Streaming sudah berjalan — projection cadangan dihentikan")
-                runCatching { projection.stop() }
+                streamer = null
+                stopSelf()
             }
         } catch (t: Throwable) {
             CastLog.event("ERROR service: ${t.javaClass.simpleName}: ${t.message}")
@@ -116,15 +144,13 @@ class CastService : Service() {
     }
 
     companion object {
+        const val EXTRA_RESULT_CODE = "result_code"
+        const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_TARGET_IP = "target_ip"
 
         private const val ACTION_STOP = "com.tasirin.castsender.action.STOP"
         private const val CHANNEL_ID = "cast_streaming"
         private const val NOTIFICATION_ID = 1001
-
-        /** MediaProjection dari dialog konsen — diset MainActivity sebelum start service. */
-        @Volatile
-        var pendingProjection: MediaProjection? = null
 
         @Volatile
         var isStreaming = false

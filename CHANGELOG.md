@@ -1,5 +1,19 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Fix MediaProjection gagal (wajib FGS mediaProjection)
+
+- Sesuai AOSP (API 29+): `MediaProjectionManager.getMediaProjection()` harus
+  dipanggil dari foreground service bertipe `mediaProjection`; sebelumnya
+  dipanggil dari activity sehingga melempar SecurityException (gejala: log
+  "Gagal membuat MediaProjection (null/exception)").
+- Alur diperbaiki ke pola kanonik: activity meneruskan konsen (resultCode +
+  resultData) ke `CastService` → service `startForeground` (FGS aktif) →
+  `getMediaProjection` → `ScreenStreamer`.
+- Perbaikan bug `resultCode > 0`: `RESULT_OK` bernilai -1, dicek ulang pakai
+  `Activity.RESULT_OK` (penyebab build 100012 diam tanpa streaming).
+- `ScreenStreamer.start()` mengembalikan Boolean — kalau port gagal dibuka,
+  service berhenti bersih dan isStreaming tidak pernah aktif.
+
 ## [v1.0 — 2026-08-14] — Anti force close + laporan crash otomatis
 
 - Semua titik rawan dibungkus try/catch agar tidak force close: callback hasil

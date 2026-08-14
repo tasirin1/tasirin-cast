@@ -113,6 +113,7 @@ class ScreenStreamer(
             if (!running) return@Thread
             startCodecAndSend(target, sock)
         }.apply { isDaemon = true; start() }
+        return true
     }
 
     private fun startCodecAndSend(target: InetAddress, sock: DatagramSocket) {

@@ -31,24 +31,16 @@ class MainActivity : AppCompatActivity() {
                         CastLog.event("IP receiver tidak valid: $ip")
                         Toast.makeText(this, R.string.toast_invalid_ip, Toast.LENGTH_SHORT).show()
                     } else {
-                        // Projection dibuat DI SINI (konsen masih segar) lalu diserahkan
-                        // ke service via static — menghindari token hilang saat re-parcel Intent.
-                        val pm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                        val projection = runCatching {
-                            pm.getMediaProjection(result.resultCode, result.data!!)
-                        }.getOrNull()
-                        if (projection == null) {
-                            CastLog.event("Gagal membuat MediaProjection (null/exception)")
-                            setStatus(getString(R.string.status_projection_failed))
-                        } else {
-                            CastService.pendingProjection = projection
-                            val serviceIntent = Intent(this, CastService::class.java).apply {
-                                putExtra(CastService.EXTRA_TARGET_IP, ip)
-                            }
-                            ContextCompat.startForegroundService(this, serviceIntent)
-                            binding.btnStart.text = getString(R.string.btn_stop)
-                            CastLog.event("Streaming dimulai — foreground service aktif")
+                        // Konsen dikirim ke service; MediaProjection dibuat DI SERVICE
+                        // setelah foreground service aktif (wajib sejak Android 10+).
+                        val serviceIntent = Intent(this, CastService::class.java).apply {
+                            putExtra(CastService.EXTRA_RESULT_CODE, result.resultCode)
+                            putExtra(CastService.EXTRA_RESULT_DATA, result.data!!)
+                            putExtra(CastService.EXTRA_TARGET_IP, ip)
                         }
+                        ContextCompat.startForegroundService(this, serviceIntent)
+                        binding.btnStart.text = getString(R.string.btn_stop)
+                        CastLog.event("Streaming dimulai — foreground service aktif")
                     }
                 } else {
                     CastLog.event("Izin MediaProjection ditolak")
