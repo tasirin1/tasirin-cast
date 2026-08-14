@@ -49,9 +49,10 @@ class JitterBufferTest {
         val buf = JitterBuffer()
         buf.offer(65534u, byteArrayOf(1))
         buf.offer(65535u, byteArrayOf(2))
+        buf.poll()
+        buf.poll()
+        // Seq 0 datang setelah 65535 (wrap-around UShort) — harus diterima & dipoll.
         buf.offer(0u, byteArrayOf(3))
-        buf.poll()
-        buf.poll()
         assertEquals(3, buf.poll()!![0].toInt())
     }
 }
