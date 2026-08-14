@@ -2,5 +2,20 @@
     <string name="app_name">Tasirin Cast Sender</string>
     <string name="status_ready">Ready — UDP port %1$d</string>
     <string name="btn_start">Start streaming</string>
+    <string name="btn_log">Realtime Log</string>
     <string name="toast_not_implemented">Streaming implementation is on the roadmap</string>
+    <string name="log_label">Realtime Log</string>
+    <string name="log_autoscroll">Auto-scroll</string>
+    <string name="log_copy">Copy</string>
+    <string name="log_search_hint">Search log…</string>
+    <string name="log_export">Export TXT</string>
+    <string name="log_clear">Clear</string>
+    <string name="log_empty">No activity yet</string>
+    <string name="log_copied">Log copied to clipboard</string>
+    <string name="log_exported">Log exported</string>
+    <string name="log_export_failed">Export failed</string>
+    <plurals name="log_lines">
+        <item quantity="one">%d line</item>
+        <item quantity="other">%d lines</item>
+    </plurals>
 </resources>

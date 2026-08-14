@@ -10,8 +10,12 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
 ├── .github/workflows/build.yml       # CI: bump versionCode → build 2 APK → lint/test → artifact
 ├── .github/PULL_REQUEST_TEMPLATE.md  # Template PR (wajib ringkasan + verifikasi)
 ├── app-sender/build.gradle.kts       # Transmitter: MediaProjection + MediaCodec + UDP
+│   └── LogActivity.kt                # Log realtime + ekspor TXT
 ├── app-receiver/build.gradle.kts     # Receiver: UDP + jitter buffer + MediaCodec + SurfaceView
+│   └── LogActivity.kt                # Log realtime + ekspor TXT
 ├── protocol/build.gradle.kts         # Library bersama: framing UDP, header, jitter buffer
+│   ├── RealtimeLog.kt                # Buffer log aman multi-thread
+│   └── CastLog.kt                    # Log realtime per-proses app (object)
 ├── CHANGELOG.md                       # Riwayat perubahan per rilis (update manual)
 ├── settings.gradle.kts               # rootProject "TasirinCast"; include 3 modul
 └── gradle wrapper                    # build via ./gradlew (CI saja untuk rilis)
