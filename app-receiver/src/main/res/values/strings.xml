@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Tasirin Cast Receiver</string>
+    <string name="status_waiting">Waiting for stream on UDP port %1$d</string>
+    <string name="hint_video">Video will appear here</string>
+</resources>

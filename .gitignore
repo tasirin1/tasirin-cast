@@ -1,0 +1,12 @@
+*.iml
+.gradle/
+.idea/
+.DS_Store
+local.properties
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.jks
+keystore.b64
+__pycache__/
