@@ -30,8 +30,8 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
 
 ## Aturan pengembangan
 
-1. **Build resmi HANYA via GitHub Actions** — jangan build lokal untuk rilis.
-   Build lokal (`./gradlew assembleDebug`) hanya untuk debugging cepat.
+1. **Build resmi HANYA via GitHub Actions** — rilis = `assembleRelease` + publish
+   GitHub Release (jangan pakai debug). Build lokal hanya untuk debugging cepat.
 2. **Bahasa**:
    - **UI aplikasi memakai Bahasa Inggris** (default `values/strings.xml`).
    - **Komentar kode, dokumentasi internal, dan commit tetap Bahasa Indonesia**.
@@ -57,9 +57,20 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
 12. **Jangan berhenti di tengah alur rilis** — setelah PR merge, pantau build
     `main` sampai sukses.
 
-## Cara memicu build
+## Cara memicu build & rilis
 
 - Push ke `main` atau PR → GitHub Actions `Build APK` otomatis jalan.
-- Artifact APK debug tersedia di tab Actions (upload-artifact).
-- Rilis APK bertanda tangan direncanakan menyusul (sama pola
-  tasirin-download-manager: keystore via secret, release GitHub).
+- Push ke `main` + secret keystore tersedia → `assembleRelease` (R8) untuk
+  `app-sender` & `app-receiver`, lalu **GitHub Release** `v<versionName>`
+  berisi kedua APK bertanda tangan (pola sama tasirin-download-manager).
+- Jangan ubah `versionName`/`versionCode` manual — CI yang bump (aturan 4).
+
+## Secrets yang dibutuhkan (Settings → Secrets and variables → Actions)
+
+| Secret | Isi |
+|---|---|
+| `KEYSTORE_BASE64` | `base64 -w0 keystore.jks` |
+| `KEYSTORE_PASSWORD` | password store keystore |
+| `KEY_ALIAS` | alias kunci |
+| `KEY_PASSWORD` | password kunci |
+

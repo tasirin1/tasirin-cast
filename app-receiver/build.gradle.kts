@@ -16,6 +16,43 @@ android {
         versionName = "1.0"
     }
 
+    // UI memakai Inggris (default values/); locale library lain dibuang — hemat ukuran.
+    androidResources {
+        localeFilters += listOf("en")
+    }
+
+    signingConfigs {
+        create("release") {
+            val storeFileProp = project.findProperty("storeFile") as String?
+            val storePasswordProp = project.findProperty("storePassword") as String?
+            val keyAliasProp = project.findProperty("keyAlias") as String?
+            val keyPasswordProp = project.findProperty("keyPassword") as String?
+            if (!storeFileProp.isNullOrBlank() && !storePasswordProp.isNullOrBlank() &&
+                !keyAliasProp.isNullOrBlank() && !keyPasswordProp.isNullOrBlank()
+            ) {
+                storeFile = rootProject.file(storeFileProp)  // workflow menaruh keystore.jks di root repo
+                storePassword = storePasswordProp
+                keyAlias = keyAliasProp
+                keyPassword = keyPasswordProp
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            val signing = signingConfigs.getByName("release")
+            if (signing.storeFile != null && signing.storeFile!!.exists()) {
+                signingConfig = signing
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

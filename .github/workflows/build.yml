@@ -13,6 +13,8 @@ jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -37,24 +39,66 @@ jobs:
             echo "versionCode baru (${F}): ${CODE}"
           done
 
-      - name: Build debug APK
-        run: ./gradlew :app-sender:assembleDebug :app-receiver:assembleDebug
-
       - name: Lint & unit test
-        run: ./gradlew :app-sender:lintDebug :app-sender:testDebugUnitTest :app-receiver:lintDebug :app-receiver:testDebugUnitTest :protocol:lintDebug :protocol:testDebugUnitTest
+        run: ./gradlew :app-sender:lintRelease :app-sender:testReleaseUnitTest :app-receiver:lintRelease :app-receiver:testReleaseUnitTest :protocol:lintDebug :protocol:testDebugUnitTest
 
-      - name: Tampilkan laporan lint di log
+      - name: Build release APK (jika secret signing tersedia)
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > keystore.jks
+          ./gradlew :app-sender:assembleRelease :app-receiver:assembleRelease \
+            -PstoreFile=keystore.jks \
+            -PstorePassword="$KEYSTORE_PASSWORD" \
+            -PkeyAlias="$KEY_ALIAS" \
+            -PkeyPassword="$KEY_PASSWORD"
+
+      - name: Cek ukuran APK (jaga APK tetap kecil)
         if: always()
-        run: cat app-sender/build/reports/lint-results-debug.txt app-receiver/build/reports/lint-results-debug.txt protocol/build/reports/lint-results-debug.txt 2>/dev/null || true
+        run: |
+          FAILED=0
+          for APK in app-sender/build/outputs/apk/release/app-sender-release.apk app-receiver/build/outputs/apk/release/app-receiver-release.apk; do
+            if [ -f "$APK" ]; then
+              SIZE=$(stat -c %s "$APK")
+              echo "Ukuran APK (${APK}): $SIZE bytes"
+              if [ "$SIZE" -gt 4194304 ]; then
+                echo "::error::APK terlalu besar: $SIZE > 4194304 bytes"
+                FAILED=1
+              fi
+            fi
+          done
+          exit $FAILED
 
-      - name: Upload debug APK (sender)
+      - name: Upload release APK (sender)
+        if: env.KEYSTORE_BASE64 != ''
         uses: actions/upload-artifact@v7
         with:
-          name: app-sender-debug
-          path: app-sender/build/outputs/apk/debug/app-sender-debug.apk
+          name: app-sender-release
+          path: app-sender/build/outputs/apk/release/app-sender-release.apk
 
-      - name: Upload debug APK (receiver)
+      - name: Upload release APK (receiver)
+        if: env.KEYSTORE_BASE64 != ''
         uses: actions/upload-artifact@v7
         with:
-          name: app-receiver-debug
-          path: app-receiver/build/outputs/apk/debug/app-receiver-debug.apk
+          name: app-receiver-release
+          path: app-receiver/build/outputs/apk/release/app-receiver-release.apk
+
+      - name: Publish GitHub Release
+        if: env.KEYSTORE_BASE64 != '' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=$(grep -oP 'versionName = "\K[^"]+' app-sender/build.gradle.kts)
+          CODE=$(grep -oP 'versionCode = \K[0-9]+' app-sender/build.gradle.kts)
+          cp app-sender/build/outputs/apk/release/app-sender-release.apk "tasirin-cast-sender-v${VER}-${CODE}.apk"
+          cp app-receiver/build/outputs/apk/release/app-receiver-release.apk "tasirin-cast-receiver-v${VER}-${CODE}.apk"
+          gh release delete "v${VER}" --yes --cleanup-tag || true
+          gh release create "v${VER}" \
+            "tasirin-cast-sender-v${VER}-${CODE}.apk" \
+            "tasirin-cast-receiver-v${VER}-${CODE}.apk" \
+            --title "Tasirin Cast v${VER} (build ${CODE})" \
+            --notes "APK rilis resmi (build ${CODE}), ditandatangani kunci release. Sender = kirim layar, Receiver = terima layar. Unduh lalu pasang di HP/TV box." \
+            --latest

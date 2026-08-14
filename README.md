@@ -70,15 +70,12 @@ HP pengirim (app-sender)                    HP penerima (app-receiver)
 - [ ] Audio (mic / aplikasi sendiri — catatan: capture audio internal butuh API 29+)
 - [ ] Mode tanpa router (hotspot receiver / Wi-Fi Direct)
 
-## Build
+## Build & rilis
 
-Build resmi HANYA via GitHub Actions (push ke `main`). Untuk debug lokal:
-
-```bash
-./gradlew :app-sender:assembleDebug :app-receiver:assembleDebug
-```
-
-Butuh **JDK 17** dan **Android SDK** (compileSdk 36, minSdk 21).
+Build & rilis resmi HANYA via GitHub Actions (push ke `main`) — setiap push
+membangun `assembleRelease` (R8 + tanda tangan keystore) dan publish
+[GitHub Release](https://github.com/tasirin1/tasirin-cast/releases) berisi
+APK sender & receiver.
 
 ## Lisensi
 
