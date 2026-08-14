@@ -15,7 +15,7 @@ class PacketHeaderTest {
 
     @Test
     fun magicSalahDitolak() {
-        val bytes = byteArrayOf(0, 0, Protocol.VERSION, 0, 0, 0, 0, 0)
+        val bytes = byteArrayOf(0, 0, Protocol.VERSION.toByte(), 0, 0, 0, 0, 0)
         assertNull(PacketHeader.from(bytes))
     }
 
