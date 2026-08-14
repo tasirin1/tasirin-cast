@@ -1,5 +1,7 @@
 package com.tasirin.castsender
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
@@ -63,6 +65,11 @@ class MainActivity : AppCompatActivity() {
         setStatus(getString(R.string.status_ready, Protocol.DEFAULT_PORT))
         binding.btnLog.setOnClickListener {
             startActivity(Intent(this, LogActivity::class.java))
+        }
+        binding.btnCopyLog.setOnClickListener {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("TasirinCast", CastLog.snapshot()))
+            Toast.makeText(this, R.string.toast_log_copied, Toast.LENGTH_SHORT).show()
         }
         binding.btnStart.setOnClickListener {
             if (CastService.isStreaming) {

@@ -44,4 +44,11 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:text="@string/btn_log" />
+
+    <Button
+        android:id="@+id/btnCopyLog"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/btn_copy_log" />
 </LinearLayout>

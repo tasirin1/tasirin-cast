@@ -40,4 +40,7 @@ object Protocol {
     /** Pesan discovery. */
     const val DISCOVERY_HELLO = "TC-HI"
     const val DISCOVERY_ACK = "TC-OK"
+
+    /** Awalan paket log receiver yang diteruskan ke sender (untuk debugging). */
+    const val LOG_PREFIX = "TCLG"
 }

@@ -77,9 +77,9 @@ class ScreenStreamer(
             projection.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
         }
 
-        // Thread kontrol: terima ACK discovery & permintaan keyframe.
+        // Thread kontrol: terima ACK discovery, log receiver & permintaan keyframe.
         Thread {
-            val buf = ByteArray(64)
+            val buf = ByteArray(600)
             while (running) {
                 try {
                     val pkt = DatagramPacket(buf, buf.size)
@@ -93,6 +93,15 @@ class ScreenStreamer(
                         data.size == 3 && data[2] == Protocol.KEYFRAME_REQUEST_CMD -> {
                             requestSyncFrame()
                             CastLog.event("Permintaan keyframe diterima")
+                        }
+                        data.size > Protocol.LOG_PREFIX.length &&
+                            data.copyOfRange(0, Protocol.LOG_PREFIX.length)
+                                .contentEquals(Protocol.LOG_PREFIX.toByteArray()) -> {
+                            // Baris log dari receiver — tampilkan dengan prefix "R:".
+                            CastLog.event(
+                                "R: " + data.copyOfRange(Protocol.LOG_PREFIX.length, data.size)
+                                    .toString(Charsets.UTF_8)
+                            )
                         }
                     }
                 } catch (e: Exception) {

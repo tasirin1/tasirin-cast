@@ -45,6 +45,16 @@ class ScreenReceiver(
 
         CastLog.event("Mendengar port ${Protocol.DEFAULT_PORT} (video) & ${Protocol.DISCOVERY_PORT} (discovery)")
 
+        // Teruskan tiap baris log ke sender (prefix TCLG) supaya bisa dibaca
+        // langsung dari app sender — memudahkan debugging jarak jauh.
+        CastLog.forwarder = { line ->
+            val sender = lastSender
+            if (sender != null) {
+                val data = (Protocol.LOG_PREFIX + line).toByteArray(Charsets.UTF_8)
+                sendControl(sender, data)
+            }
+        }
+
         discovery?.let { ds ->
             Thread {
                 val buf = ByteArray(64)
@@ -197,6 +207,7 @@ class ScreenReceiver(
 
     fun stop() {
         running = false
+        CastLog.forwarder = null
         runCatching { discoverySocket?.close() }
         runCatching { videoSocket?.close() }
         runCatching { codec?.stop() }

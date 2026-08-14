@@ -16,8 +16,9 @@ class RealtimeLog(
     // Formatter dipakai hanya di dalam synchronized(lock) -> aman dipakai bersama.
     private val stampFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
-    fun append(message: String) {
-        synchronized(lock) {
+    /** Catat satu baris; mengembalikan baris lengkap (stempel + pesan). */
+    fun append(message: String): String {
+        return synchronized(lock) {
             val stamp = stampFormat.format(Date())
             val line = if (message.length <= maxLineLength) {
                 "$stamp $message"
@@ -26,6 +27,7 @@ class RealtimeLog(
             }
             buffer.addLast(line)
             while (buffer.size > maxLines) buffer.removeFirst()
+            line
         }
     }
 

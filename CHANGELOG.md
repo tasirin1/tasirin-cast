@@ -1,5 +1,13 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Log receiver tampil di sender + tombol Copy Log
+
+- Receiver meneruskan setiap baris lognya ke sender via UDP (prefix `TCLG`);
+  sender menampilkannya dengan prefix `R:` di Realtime Log — debugging tanpa
+  perlu buka app receiver.
+- Tombol **Copy Log** di layar utama sender: salin seluruh log (sender +
+  receiver) ke clipboard sekaligus.
+
 ## [v1.0 — 2026-08-14] — SPS/PPS in-band di setiap keyframe
 
 - Sender menyimpan SPS/PPS lalu menempelkannya ke setiap keyframe (in-band)

@@ -7,8 +7,15 @@ package com.tasirin.cast.protocol
 object CastLog {
     private val buffer = RealtimeLog()
 
+    /** Hook opsional (diisi app receiver) untuk meneruskan tiap baris log ke sender via UDP. */
+    @Volatile
+    var forwarder: ((String) -> Unit)? = null
+
     /** Catat satu baris kejadian (stempel waktu otomatis). */
-    fun event(message: String) = buffer.append(message)
+    fun event(message: String) {
+        val line = buffer.append(message)
+        forwarder?.invoke(line)
+    }
 
     /** Snapshot seluruh log untuk ditampilkan / diekspor. */
     fun snapshot(): String = buffer.snapshot()
