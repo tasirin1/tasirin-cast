@@ -83,3 +83,4 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
 | `KEYSTORE_PASSWORD` | password store keystore |
 | `KEY_ALIAS` | alias kunci |
 | `KEY_PASSWORD` | password kunci |
+| `VT_API_KEY` | API key VirusTotal (scan APK di CI, opsional) |

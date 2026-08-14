@@ -1,5 +1,11 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Scan VirusTotal di CI
+
+- Workflow kini meng-upload kedua APK rilis ke VirusTotal (hash lookup dulu,
+  upload kalau belum pernah discan) lalu mencetak hasil deteksi — bukti
+  false-positive antivirus. Secret baru: `VT_API_KEY`.
+
 ## [v1.0 — 2026-08-14] — Log receiver tampil di sender + tombol Copy Log
 
 - Receiver meneruskan setiap baris lognya ke sender via UDP (prefix `TCLG`);

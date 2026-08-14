@@ -86,6 +86,42 @@ jobs:
           name: app-receiver-release
           path: app-receiver/build/outputs/apk/release/app-receiver-release.apk
 
+      - name: VirusTotal scan (cek false-positive antivirus)
+        if: env.KEYSTORE_BASE64 != '' && secrets.VT_API_KEY != ''
+        continue-on-error: true
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: |
+          for APK in app-sender/build/outputs/apk/release/app-sender-release.apk app-receiver/build/outputs/apk/release/app-receiver-release.apk; do
+            [ -f "$APK" ] || continue
+            NAME=$(basename "$APK")
+            HASH=$(sha256sum "$APK" | cut -d' ' -f1)
+            echo "== VirusTotal: $NAME ($HASH) =="
+            # Cek laporan yang sudah ada dulu (hemat kuota).
+            RESP=$(curl -s -H "x-apikey: $VT_API_KEY" "https://www.virustotal.com/api/v3/files/$HASH")
+            STATS=$(echo "$RESP" | python3 -c "import json,sys; a=json.load(sys.stdin).get('data',{}).get('attributes',{}).get('last_analysis_stats',{}); print(a.get('malicious',0), a.get('suspicious',0), a.get('undetected',0), a.get('harmless',0))" 2>/dev/null || true)
+            if [ -z "$STATS" ]; then
+              AID=$(curl -s -X POST "https://www.virustotal.com/api/v3/files" -H "x-apikey: $VT_API_KEY" -F "file=@$APK" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null || true)
+              if [ -z "$AID" ]; then
+                echo "Gagal upload ke VirusTotal (kuota/jaringan) — dilewati."
+                continue
+              fi
+              echo "Analysis id: $AID"
+              for i in $(seq 1 12); do
+                sleep 20
+                R=$(curl -s -H "x-apikey: $VT_API_KEY" "https://www.virustotal.com/api/v3/analyses/$AID")
+                ST=$(echo "$R" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['attributes'].get('status',''))" 2>/dev/null || true)
+                if [ "$ST" = "completed" ]; then
+                  echo "$R" | python3 -c "import json,sys; s=json.load(sys.stdin)['data']['attributes']['stats']; print('VirusTotal $NAME: malicious=%s suspicious=%s undetected=%s harmless=%s' % (s.get('malicious',0), s.get('suspicious',0), s.get('undetected',0), s.get('harmless',0)))"
+                  break
+                fi
+              done
+            else
+              echo "VirusTotal $NAME (laporan lama): malicious=$(echo $STATS | cut -d' ' -f1) suspicious=$(echo $STATS | cut -d' ' -f2)"
+            fi
+            echo "Detail: https://www.virustotal.com/gui/file/$HASH/detection"
+          done
+
       - name: Publish GitHub Release
         if: env.KEYSTORE_BASE64 != '' && github.event_name != 'pull_request'
         env:
