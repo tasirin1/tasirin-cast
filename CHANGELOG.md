@@ -1,5 +1,12 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Encoder: fallback konfigurasi + codec baru per percobaan
+
+- Perbaikan retry: sebelumnya codec yang sudah di-release dipakai ulang
+  ("codec is released already") — kini codec baru dibuat untuk tiap percobaan.
+- Urutan fallback konfigurasi: CBR -> VBR -> CQ -> default -> tanpa
+  `MAX_B_FRAMES` (mode CQ sering ditolak perangkat tertentu).
+
 ## [v1.0 — 2026-08-14] — Encoder stabil (drain sinkron + fallback bitrate)
 
 - Ganti `MediaCodec.Callback` (rawan `CodecException` kosong di perangkat

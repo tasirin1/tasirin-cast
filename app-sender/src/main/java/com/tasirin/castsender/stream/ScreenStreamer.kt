@@ -175,44 +175,56 @@ class ScreenStreamer(
         }
     }
 
-    /** Buat encoder H.264 surface; coba mode bitrate CQ -> VBR -> CBR. */
+    /** Buat encoder H.264 surface; coba beberapa konfigurasi sampai berhasil. */
     private fun createEncoder(): MediaCodec? {
-        val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        if (enc == null) {
-            CastLog.event("ERROR encoder: perangkat tidak punya encoder H.264")
-            return null
-        }
-        val modes = listOf(
-            MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CQ,
-            MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR,
-            MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR,
+        // Mode bitrate paling kompatibel di depan; CQ (constant quality) sering
+        // ditolak sebagian perangkat.
+        val variants = listOf(
+            Variant("CBR", MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR, true),
+            Variant("VBR", MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR, true),
+            Variant("CQ", MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CQ, true),
+            Variant("default", null, true),
+            Variant("default tanpa max-b-frames", null, false),
         )
-        for (mode in modes) {
+        for (v in variants) {
+            // Codec BARU tiap percobaan — codec yang sudah di-release tidak bisa dipakai ulang.
+            val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            if (enc == null) {
+                CastLog.event("ERROR encoder: perangkat tidak punya encoder H.264")
+                return null
+            }
             try {
                 val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
                     setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                     setInteger(MediaFormat.KEY_BIT_RATE, 6_000_000)
-                    setInteger(MediaFormat.KEY_BITRATE_MODE, mode)
+                    v.bitrateMode?.let { setInteger(MediaFormat.KEY_BITRATE_MODE, it) }
                     setInteger(MediaFormat.KEY_FRAME_RATE, 30)
                     setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
-                    setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+                    if (v.maxBFrames) setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
                 }
                 // Urutan wajib: configure -> createInputSurface -> start.
                 enc.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 inputSurface = enc.createInputSurface()
                 enc.start()
-                CastLog.event("Encoder siap (bitrate mode $mode)")
+                CastLog.event("Encoder siap (${v.label})")
                 return enc
             } catch (e: Exception) {
-                CastLog.event("Encoder gagal mode $mode: ${e.javaClass.simpleName}: ${e.message}")
+                CastLog.event("Encoder gagal ${v.label} (${e.javaClass.simpleName}): ${e.message}")
                 runCatching { enc.stop() }
                 runCatching { enc.release() }
             }
         }
-        CastLog.event("ERROR encoder: semua mode bitrate gagal")
+        CastLog.event("ERROR encoder: semua konfigurasi gagal")
         onStatus("Gagal: encoder H.264 tidak tersedia")
         return null
     }
+
+    /** Satu kandidat konfigurasi encoder. */
+    private data class Variant(
+        val label: String,
+        val bitrateMode: Int?,
+        val maxBFrames: Boolean,
+    )
 
     /** Kirim semua paket yang sudah menunggu di antrean. */
     private fun sendPending(sock: DatagramSocket, target: InetAddress) {
