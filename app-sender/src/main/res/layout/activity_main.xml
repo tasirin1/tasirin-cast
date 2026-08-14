@@ -31,6 +31,19 @@
         android:inputType="text"
         android:maxLines="1" />
 
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/quality_label"
+        android:textSize="14sp" />
+
+    <Spinner
+        android:id="@+id/spinQuality"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp" />
+
     <Button
         android:id="@+id/btnStart"
         android:layout_width="wrap_content"

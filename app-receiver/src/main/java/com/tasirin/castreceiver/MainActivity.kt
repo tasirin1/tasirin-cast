@@ -23,6 +23,11 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private lateinit var binding: ActivityMainBinding
     private var receiver: ScreenReceiver? = null
     private var surface: Surface? = null
+    private var surfaceTexture: SurfaceTexture? = null
+
+    // Ukuran video default; diperbarui saat decoder melaporkan ukuran asli.
+    private var videoWidth = 1280
+    private var videoHeight = 720
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,16 +49,25 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     private fun startReceiver() {
-        val st = binding.textureView.surfaceTexture
+        val st = surfaceTexture ?: binding.textureView.surfaceTexture
         if (st == null) {
             CastLog.event("Surface belum siap — coba lagi")
             Toast.makeText(this, R.string.toast_surface_not_ready, Toast.LENGTH_SHORT).show()
             return
         }
+        surfaceTexture = st
+        // Buffer texture WAJIB selebar video asli — kalau dibiarkan selebar view,
+        // video sudah ter-stretch penuh lalu transform fit-center justru
+        // memperbesar (jadi tidak ke tengah & ke-zoom-in).
+        st.setDefaultBufferSize(videoWidth, videoHeight)
         surface?.release()
         val s = Surface(st)
         surface = s
-        val r = ScreenReceiver(s) { msg -> setStatus(msg) }
+        val r = ScreenReceiver(
+            s,
+            onStatus = { msg -> setStatus(msg) },
+            onVideoSize = { w, h -> handleVideoSize(w, h) },
+        )
         receiver = r
         r.start()
         // Fullscreen saat streaming: sembunyikan panel kontrol & hint,
@@ -79,9 +93,26 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         setStatus(getString(R.string.status_waiting, Protocol.DEFAULT_PORT))
     }
 
+    // Dipanggil dari thread decoder saat ukuran output berubah (resolusi asli
+    // streaming, misal 1080p). Semua akses view di posting ke main thread.
+    private fun handleVideoSize(w: Int, h: Int) {
+        if (w <= 0 || h <= 0) return
+        runOnUiThread {
+            if (videoWidth != w || videoHeight != h) {
+                videoWidth = w
+                videoHeight = h
+                runCatching { surfaceTexture?.setDefaultBufferSize(w, h) }
+                updateTextureTransform()
+                CastLog.event("Video disetel ke ${w}x${h} — transform diperbarui")
+            }
+        }
+    }
+
     // SurfaceTextureListener: kalau surface dibuat ulang saat receiver jalan,
     // restart receiver dengan surface baru supaya render tidak ke surface mati.
     override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+        this.surfaceTexture = surfaceTexture
+        runCatching { surfaceTexture.setDefaultBufferSize(videoWidth, videoHeight) }
         updateTextureTransform()
         if (receiver != null) {
             CastLog.event("Surface dibuat ulang — restart receiver")
@@ -108,17 +139,17 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     /**
-     * Video encoder selalu 1280x720 (16:9). Kalau ukuran view tidak sama persis
-     * aspeknya, TextureView akan meregangkan gambar. Transform ini memetakan
-     * video secara fit-center supaya tidak terdistorsi ("tertekan" ke atas).
+     * Video dirender ke buffer SurfaceTexture berukuran video asli. Transform
+     * ini memetakan buffer tersebut secara fit-center ke view — tidak lagi
+     * meregang/"tertekan" ke atas atau terpotong.
      */
     private fun updateTextureTransform() {
         val view = binding.textureView
         val viewW = view.width.toFloat()
         val viewH = view.height.toFloat()
         if (viewW <= 0f || viewH <= 0f) return
-        val videoW = 1280f
-        val videoH = 720f
+        val videoW = videoWidth.toFloat()
+        val videoH = videoHeight.toFloat()
         val scale = min(viewW / videoW, viewH / videoH)
         val matrix = Matrix()
         matrix.postScale(scale, scale)

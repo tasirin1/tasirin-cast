@@ -1,3 +1,13 @@
+## [v1.0 — 2026-08-14] — Video receiver fit-center + pengaturan kualitas di sender
+
+- Receiver: buffer SurfaceTexture kini disetel selebar video asli
+  (setDefaultBufferSize) sebelum dirender — transform fit-center bekerja
+  benar, video tidak lagi tampil miring/tidak tengah/ke-zoom-in; ukuran
+  mengikuti laporan decoder otomatis saat resolusi berubah.
+- Sender: pengaturan kualitas video baru (Low 640x360, Medium 854x480,
+  High 1280x720 default, Ultra 1920x1080) di layar utama — pilihan
+  tersimpan otomatis dan dipakai saat streaming dimulai.
+
 ## [v1.0 — 2026-08-14] — Receiver fullscreen + aspek rasio saat streaming
 
 - Saat streaming dimulai, receiver otomatis masuk mode fullscreen: panel

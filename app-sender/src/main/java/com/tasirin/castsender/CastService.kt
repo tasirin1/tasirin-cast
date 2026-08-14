@@ -13,6 +13,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.tasirin.castsender.stream.Quality
 import com.tasirin.castsender.stream.ScreenStreamer
 import com.tasirin.cast.protocol.CastLog
 import java.net.InetAddress
@@ -82,7 +83,9 @@ class CastService : Service() {
 
             val ip = intent?.getStringExtra(EXTRA_TARGET_IP).orEmpty()
             val targetIp = if (ip.isEmpty()) null else runCatching { InetAddress.getByName(ip) }.getOrNull()
-            val s = ScreenStreamer(this, projection, targetIp) { msg -> onStatus?.invoke(msg) }
+            val quality = Quality.fromKey(intent?.getStringExtra(EXTRA_QUALITY))
+            CastLog.event("Kualitas video: ${quality.width}x${quality.height} (${quality.bitrate / 1_000_000} Mbps)")
+            val s = ScreenStreamer(this, projection, targetIp, quality) { msg -> onStatus?.invoke(msg) }
             streamer = s
             if (s.start()) {
                 isStreaming = true
@@ -147,6 +150,7 @@ class CastService : Service() {
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_TARGET_IP = "target_ip"
+        const val EXTRA_QUALITY = "quality"
 
         private const val ACTION_STOP = "com.tasirin.castsender.action.STOP"
         private const val CHANNEL_ID = "cast_streaming"

@@ -29,10 +29,11 @@ class ScreenStreamer(
     context: Context,
     private val projection: MediaProjection,
     private val targetIp: InetAddress?,
+    private val quality: Quality,
     private val onStatus: (String) -> Unit,
 ) {
-    private val width = 1280
-    private val height = 720
+    private val width get() = quality.width
+    private val height get() = quality.height
     private val dpi = context.resources.displayMetrics.densityDpi
     private val packetizer = Packetizer()
 
@@ -153,7 +154,7 @@ class ScreenStreamer(
                 inputSurface!!, null, null
             )
             started = true
-            CastLog.event("Streaming ke ${target.hostAddress}:${Protocol.DEFAULT_PORT} ($width x $height)")
+            CastLog.event("Streaming ke ${target.hostAddress}:${Protocol.DEFAULT_PORT} ($width x $height, ${quality.bitrate / 1_000_000} Mbps)")
             onStatus("Streaming ke ${target.hostAddress}")
 
             // Drain sinkron: lebih kompatibel lintas perangkat daripada
@@ -229,7 +230,7 @@ class ScreenStreamer(
             try {
                 val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
                     setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-                    setInteger(MediaFormat.KEY_BIT_RATE, 6_000_000)
+                    setInteger(MediaFormat.KEY_BIT_RATE, quality.bitrate)
                     v.bitrateMode?.let { setInteger(MediaFormat.KEY_BITRATE_MODE, it) }
                     setInteger(MediaFormat.KEY_FRAME_RATE, 30)
                     setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)

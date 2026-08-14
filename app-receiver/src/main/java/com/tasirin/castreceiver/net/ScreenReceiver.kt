@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 class ScreenReceiver(
     private val surface: Surface,
     private val onStatus: (String) -> Unit,
+    private val onVideoSize: (Int, Int) -> Unit = { _, _ -> },
 ) {
     private val frameQueue = LinkedBlockingQueue<com.tasirin.cast.protocol.Frame>(32)
     private val jitter = JitterBuffer()
@@ -148,6 +149,7 @@ class ScreenReceiver(
                             val w = runCatching { f.getInteger(MediaFormat.KEY_WIDTH) }.getOrDefault(0)
                             val h = runCatching { f.getInteger(MediaFormat.KEY_HEIGHT) }.getOrDefault(0)
                             CastLog.event("Decoder output: ${w}x${h}")
+                            if (w > 0 && h > 0) onVideoSize(w, h)
                         }
                     } catch (e: Exception) {
                         if (running) CastLog.event("Render error: ${e.message}")
