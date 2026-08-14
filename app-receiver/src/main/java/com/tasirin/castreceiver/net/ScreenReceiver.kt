@@ -143,6 +143,11 @@ class ScreenReceiver(
                             if (rendered % 30 == 0L) {
                                 CastLog.event("Frame dirender: $rendered")
                             }
+                        } else if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                            val f = dec.outputFormat
+                            val w = runCatching { f.getInteger(MediaFormat.KEY_WIDTH) }.getOrDefault(0)
+                            val h = runCatching { f.getInteger(MediaFormat.KEY_HEIGHT) }.getOrDefault(0)
+                            CastLog.event("Decoder output: ${w}x${h}")
                         }
                     } catch (e: Exception) {
                         if (running) CastLog.event("Render error: ${e.message}")

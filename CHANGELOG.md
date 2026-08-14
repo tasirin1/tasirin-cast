@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Receiver: TextureView (render andal di TV box)
+
+- Ganti SurfaceView dengan TextureView di receiver — frame sudah terbukti
+  dirender (`Frame dirender`) tapi tidak tampil; TextureView merender sebagai
+  view biasa sehingga tidak ada masalah z-order/surface terpisah di TV box.
+- Lifecycle surface dikelola (`SurfaceTextureListener`): surface dibuat ulang
+  → receiver restart dengan surface baru; surface hancur → receiver berhenti.
+- Log `Decoder output: <w>x<h>` saat format decoder keluar.
+
 ## [v1.0 — 2026-08-14] — Scan VirusTotal di CI
 
 - Workflow kini meng-upload kedua APK rilis ke VirusTotal (hash lookup dulu,
