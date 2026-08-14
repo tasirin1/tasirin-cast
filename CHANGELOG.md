@@ -1,3 +1,13 @@
+## [v1.0 — 2026-08-14] — Receiver fullscreen + aspek rasio saat streaming
+
+- Saat streaming dimulai, receiver otomatis masuk mode fullscreen: panel
+  kontrol, tombol Start, dan hint disembunyikan; hanya tombol Stop yang
+  tampil di pojok atas; system bar ikut disembunyikan (immersive sticky).
+- Video 1280x720 kini dirender fit-center via transform Matrix pada
+  TextureView — tidak lagi meregang/"tertekan" ke atas saat aspek layar
+  tidak 16:9.
+- System bar dan panel kontrol dikembalikan otomatis saat streaming berhenti.
+
 # Changelog
 
 ## [v1.0 — 2026-08-14] — Receiver: TextureView (render andal di TV box)
