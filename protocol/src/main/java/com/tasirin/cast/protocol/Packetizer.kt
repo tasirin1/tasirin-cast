@@ -10,7 +10,7 @@ package com.tasirin.cast.protocol
 class Packetizer {
     private var seq: UShort = 0u
 
-    fun packetsFor(buffer: ByteArray, timestampMs: UInt): List<ByteArray> {
+    fun packetsFor(buffer: ByteArray, timestampMs: UInt, isCodecConfig: Boolean = false): List<ByteArray> {
         val out = ArrayList<ByteArray>()
         var offset = 0
         while (offset < buffer.size) {
@@ -20,6 +20,7 @@ class Packetizer {
                 isFrameStart = offset == 0,
                 timestampMs = timestampMs,
                 payloadSize = len.toUShort(),
+                isCodecConfig = isCodecConfig && offset == 0,
             )
             out.add(header.toByteArray() + buffer.copyOfRange(offset, offset + len))
             seq++
