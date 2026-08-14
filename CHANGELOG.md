@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.0 — 2026-08-14] — Diagnosa receiver + perbaikan frame terbuang
+
+- Receiver mencatat paket yang ditolak (magic/versi protokol) — kalau receiver
+  masih build lama, semua paket versi 3 ditolak dan kini terlihat di log.
+- Log tahap decoder: `Frame masuk decoder` dan `Frame dirender` — menunjukkan
+  tepat di mana alur macet.
+- Perbaikan: frame tidak lagi dibuang saat input buffer decoder penuh (ditunggu
+  sampai buffer tersedia).
+
 ## [v1.0 — 2026-08-14] — Fix receiver layar hitam: SPS/PPS (codec config) dikirim
 
 - Penyebab: encoder Android mengirim SPS/PPS sebagai buffer terpisah

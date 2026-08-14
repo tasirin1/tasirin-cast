@@ -71,13 +71,22 @@ class ScreenReceiver(
         video?.let { vs ->
             Thread {
                 val buf = ByteArray(Protocol.MAX_UDP_PACKET)
+                var rejected = 0L
                 while (running) {
                     try {
                         val pkt = DatagramPacket(buf, buf.size)
                         vs.receive(pkt)
                         lastSender = pkt.address
                         if (pkt.length < Protocol.HEADER_SIZE) continue
-                        val header = PacketHeader.from(buf) ?: continue
+                        val header = PacketHeader.from(buf)
+                        if (header == null) {
+                            // Magic/versi tidak cocok — biasanya receiver masih build lama.
+                            rejected++
+                            if (rejected % 100 == 1L) {
+                                CastLog.event("Paket ditolak (magic/versi) dari ${pkt.address.hostAddress} — pastikan receiver build terbaru")
+                            }
+                            continue
+                        }
                         val payload = buf.copyOfRange(Protocol.HEADER_SIZE, pkt.length)
                         if (jitter.offer(header, payload)) {
                             var packet = jitter.poll()
@@ -114,11 +123,16 @@ class ScreenReceiver(
             // Drain output (render) di thread terpisah.
             Thread {
                 val info = MediaCodec.BufferInfo()
+                var rendered = 0L
                 while (running) {
                     try {
                         val outIdx = dec.dequeueOutputBuffer(info, 10_000)
                         if (outIdx >= 0) {
                             dec.releaseOutputBuffer(outIdx, true)
+                            rendered++
+                            if (rendered % 30 == 0L) {
+                                CastLog.event("Frame dirender: $rendered")
+                            }
                         }
                     } catch (e: Exception) {
                         if (running) CastLog.event("Render error: ${e.message}")
@@ -126,15 +140,30 @@ class ScreenReceiver(
                 }
             }.apply { isDaemon = true; start() }
 
+            var fed = 0L
+            var dropped = 0L
             while (running) {
                 val frame = frameQueue.poll(1, TimeUnit.SECONDS) ?: continue
-                val inIdx = dec.dequeueInputBuffer(10_000)
-                if (inIdx < 0) continue
+                // Tunggu input buffer tersedia (jangan buang frame seperti dulu).
+                var inIdx = -1
+                for (attempt in 0 until 20) {
+                    inIdx = dec.dequeueInputBuffer(10_000)
+                    if (inIdx >= 0) break
+                }
+                if (inIdx < 0) {
+                    dropped++
+                    if (dropped % 30 == 1L) CastLog.event("Frame dibuang (input penuh): $dropped")
+                    continue
+                }
                 val input = dec.getInputBuffer(inIdx) ?: continue
                 input.clear()
                 input.put(frame.data)
                 val flags = if (frame.isCodecConfig) MediaCodec.BUFFER_FLAG_CODEC_CONFIG else 0
                 dec.queueInputBuffer(inIdx, 0, frame.data.size, frame.timestampMs.toLong() * 1000, flags)
+                fed++
+                if (fed % 30 == 0L) {
+                    CastLog.event("Frame masuk decoder: $fed")
+                }
             }
         } catch (e: Exception) {
             CastLog.event("ERROR decoder: ${e.message}")
