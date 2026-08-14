@@ -40,7 +40,7 @@ jobs:
           done
 
       - name: Lint & unit test
-        run: ./gradlew :app-sender:lintRelease :app-sender:testReleaseUnitTest :app-receiver:lintRelease :app-receiver:testReleaseUnitTest :protocol:lintDebug :protocol:testDebugUnitTest
+        run: ./gradlew :app-sender:lintRelease :app-sender:testDebugUnitTest :app-receiver:lintRelease :app-receiver:testDebugUnitTest :protocol:lintDebug :protocol:testDebugUnitTest
 
       - name: Build release APK (jika secret signing tersedia)
         if: env.KEYSTORE_BASE64 != ''
