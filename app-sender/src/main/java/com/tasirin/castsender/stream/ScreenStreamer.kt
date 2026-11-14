@@ -18,13 +18,24 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.util.concurrent.LinkedBlockingQueue
 import kotlin.math.min
 
 /**
- * Transmitter layar: MediaProjection -> VirtualDisplay -> encoder H.264 ->
- * packetizer UDP -> receiver. Juga menerima kontrol (ACK discovery & minta
- * keyframe) pada port yang sama.
+ * Transmitter layar (kerangka v2): MediaProjection -> VirtualDisplay ->
+ * encoder H.264 -> packetizer protokol v4 -> UDP, semua dalam satu alur
+ * yang jelas:
+ *
+ * - Encoder dikonfigurasi dari chain fallback yang sudah terbukti di
+ *   banyak perangkat (CBR -> VBR -> CQ -> default).
+ * - Konfigurasi codec (SPS/PPS + ukuran) dibaca dari FORMAT encoder —
+ *   bukan dari buffer config — lalu dikirim sebagai frame konfigurasi
+ *   tersendiri, dan diulang tepat sebelum setiap keyframe. Receiver
+ *   mengonfigurasi decoder-nya dari frame itu (decoder tidak pernah
+ *   ditebak formatnya).
+ * - Thread drain encoder mengirim paket LANGSUNG ke socket, tanpa
+ *   antrean perantara: tidak ada penumpukan yang menambah delay.
+ * - Kontrol masuk (ACK discovery, minta keyframe, log receiver) dibaca
+ *   di thread tersendiri pada socket yang sama.
  */
 class ScreenStreamer(
     context: Context,
@@ -34,14 +45,12 @@ class ScreenStreamer(
     private val onStatus: (String) -> Unit,
 ) {
     // Resolusi capture mengikuti aspek layar asli (mode potret = video
-    // potret, tidak lagi diregangkan jadi 16:9), diskalakan agar sisi
-    // terpanjang tidak melebihi preset kualitas.
+    // potret), diskalakan agar sisi terpanjang tidak melebihi preset.
     private val screenW: Int
     private val screenH: Int
     private val width: Int
     private val height: Int
     private val dpi: Int
-    private val packetizer = Packetizer()
 
     init {
         val dm = context.resources.displayMetrics
@@ -56,12 +65,22 @@ class ScreenStreamer(
         CastLog.event("Resolusi capture: ${width}x${height} (layar ${screenW}x${screenH}, preset ${quality.key})")
     }
 
-    private val sendQueue = LinkedBlockingQueue<ByteArray>(512)
-    private val targetQueue = LinkedBlockingQueue<InetAddress>()
+    private val packetizer = Packetizer()
 
     private var codec: MediaCodec? = null
     private var inputSurface: Surface? = null
     private var virtualDisplay: VirtualDisplay? = null
+    private var socket: DatagramSocket? = null
+
+    @Volatile private var running = false
+
+    /** Alamat receiver; null selama belum ketemu (discovery/manual). */
+    @Volatile private var target: InetAddress? = null
+
+    /** Payload frame konfigurasi codec; siap begitu format encoder diketahui. */
+    @Volatile private var configPayload: ByteArray? = null
+
+    @Volatile private var lastKeyframeRequestMs = 0L
 
     // Wajib sejak Android 14: callback MediaProjection didaftarkan SEBELUM
     // createVirtualDisplay (kalau tidak, IllegalStateException).
@@ -71,10 +90,6 @@ class ScreenStreamer(
             stop()
         }
     }
-    private var socket: DatagramSocket? = null
-    @Volatile private var running = false
-    @Volatile private var started = false
-    private var sendThread: Thread? = null
 
     fun start(): Boolean {
         running = true
@@ -92,153 +107,213 @@ class ScreenStreamer(
             return false
         }
         socket = sock
-        CastLog.event("Port ${Protocol.DEFAULT_PORT} dibuka — menunggu target")
+
         runCatching {
             projection.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
         }
 
-        // Thread kontrol: terima ACK discovery, log receiver & permintaan keyframe.
-        Thread {
-            val buf = ByteArray(600)
-            while (running) {
-                try {
-                    val pkt = DatagramPacket(buf, buf.size)
-                    sock.receive(pkt)
-                    val data = buf.copyOf(pkt.length)
-                    when {
-                        data.size == 5 && data.contentEquals(Protocol.DISCOVERY_ACK.toByteArray()) -> {
-                            CastLog.event("Receiver ditemukan: ${pkt.address.hostAddress}")
-                            targetQueue.offer(pkt.address)
-                        }
-                        data.size == 3 && data[2] == Protocol.KEYFRAME_REQUEST_CMD -> {
-                            requestSyncFrame()
-                            CastLog.event("Permintaan keyframe diterima")
-                        }
-                        data.size > Protocol.LOG_PREFIX.length &&
-                            data.copyOfRange(0, Protocol.LOG_PREFIX.length)
-                                .contentEquals(Protocol.LOG_PREFIX.toByteArray()) -> {
-                            // Baris log dari receiver — tampilkan dengan prefix "R:".
-                            CastLog.event(
-                                "R: " + data.copyOfRange(Protocol.LOG_PREFIX.length, data.size)
-                                    .toString(Charsets.UTF_8)
-                            )
-                        }
-                    }
-                } catch (e: Exception) {
-                    if (running) CastLog.event("Kontrol error: ${e.message}")
-                }
-            }
-        }.apply { isDaemon = true; start() }
-
-        // Auto-discovery: broadcast hello sampai target diketahui.
-        if (targetIp != null) {
-            targetQueue.offer(targetIp)
-        } else {
-            CastLog.event("Mencari receiver (broadcast)…")
-            onStatus("Mencari receiver…")
-            Thread {
-                val hello = Protocol.DISCOVERY_HELLO.toByteArray()
-                val broadcast = DatagramPacket(
-                    hello, hello.size,
-                    InetAddress.getByName("255.255.255.255"), Protocol.DISCOVERY_PORT
-                )
-                while (running && !started) {
-                    try { sock.send(broadcast) } catch (e: Exception) {
-                        if (running) CastLog.event("Broadcast error: ${e.message}")
-                    }
-                    try { Thread.sleep(2000) } catch (e: InterruptedException) { break }
-                }
-            }.apply { isDaemon = true; start() }
+        val enc = createEncoder()
+        if (enc == null) {
+            running = false
+            runCatching { sock.close() }
+            runCatching { projection.stop() }
+            return false
         }
+        codec = enc
 
-        // Thread pengirim: tunggu target, lalu jalankan encoder + kirim.
-        sendThread = Thread {
-            val target = runCatching { targetQueue.take() }.getOrNull() ?: return@Thread
-            if (!running) return@Thread
-            // Info ukuran layar dikirim lebih dulu supaya receiver bisa
-            // mengoreksi aspek tampilan (potret/lanskap).
-            runCatching {
-                val info = Protocol.screenInfoBytes(screenW, screenH)
-                sock.send(DatagramPacket(info, info.size, target, Protocol.DEFAULT_PORT))
-                CastLog.event("Info layar ${screenW}x${screenH} dikirim ke receiver")
-            }
-            startCodecAndSend(target, sock)
-        }.apply { isDaemon = true; start() }
-        return true
-    }
-
-    private fun startCodecAndSend(target: InetAddress, sock: DatagramSocket) {
-        try {
-            CastLog.event("Menyiapkan encoder H.264 untuk ${target.hostAddress}")
-            val enc = createEncoder() ?: return
-            codec = enc
-
-            virtualDisplay = projection.createVirtualDisplay(
+        virtualDisplay = try {
+            projection.createVirtualDisplay(
                 "TasirinCast",
                 width, height, dpi,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                inputSurface!!, null, null
+                inputSurface, null, null,
             )
-            started = true
-            CastLog.event("Streaming ke ${target.hostAddress}:${Protocol.DEFAULT_PORT} ($width x $height, ${quality.bitrate / 1_000_000} Mbps)")
-            onStatus("Streaming ke ${target.hostAddress}")
+        } catch (e: Exception) {
+            CastLog.event("ERROR createVirtualDisplay: ${e.javaClass.simpleName}: ${e.message}")
+            onStatus("Gagal: ${e.message}")
+            stop()
+            return false
+        }
 
-            // Drain sinkron: lebih kompatibel lintas perangkat daripada
-            // MediaCodec.Callback (callback butuh Looper & rawan bug OEM).
-            val info = MediaCodec.BufferInfo()
-            var framesSent = 0L
-            var configBytes: ByteArray? = null
+        Thread { controlLoop(sock) }.apply { isDaemon = true; start() }
+
+        if (targetIp != null) {
+            onTargetFound(targetIp, manual = true)
+        } else {
+            CastLog.event("Mencari receiver (broadcast)…")
+            onStatus("Mencari receiver…")
+            Thread { discoveryLoop(sock) }.apply { isDaemon = true; start() }
+        }
+
+        Thread { drainLoop(sock) }.apply { isDaemon = true; start() }
+        CastLog.event("Streaming siap — ${width}x${height}, ${quality.bitrate / 1_000_000} Mbps")
+        return true
+    }
+
+    /** Target terkunci: kirim info layar + konfigurasi + paksa keyframe awal. */
+    private fun onTargetFound(address: InetAddress, manual: Boolean) {
+        val first = target == null
+        target = address
+        if (first) {
+            CastLog.event("Receiver terkunci: ${address.hostAddress}${if (manual) " (manual)" else ""}")
+            onStatus("Streaming ke ${address.hostAddress}")
+        }
+        val sock = socket ?: return
+        runCatching {
+            val info = Protocol.screenInfoBytes(screenW, screenH)
+            sock.send(DatagramPacket(info, info.size, address, Protocol.DEFAULT_PORT))
+        }
+        configPayload?.let { sendFrame(sock, address, it, 0u, isCodecConfig = true) }
+        requestSyncFrame()
+    }
+
+    /** Broadcast hello berkala sampai receiver menjawab. */
+    private fun discoveryLoop(sock: DatagramSocket) {
+        val hello = Protocol.DISCOVERY_HELLO.toByteArray()
+        val packet = DatagramPacket(
+            hello, hello.size,
+            InetAddress.getByName("255.255.255.255"), Protocol.DISCOVERY_PORT,
+        )
+        while (running && target == null) {
+            runCatching { sock.send(packet) }
+            try {
+                Thread.sleep(1500)
+            } catch (e: InterruptedException) {
+                break
+            }
+        }
+    }
+
+    /** Baca kontrol masuk: ACK discovery, permintaan keyframe, log receiver. */
+    private fun controlLoop(sock: DatagramSocket) {
+        val buf = ByteArray(2048)
+        val ack = Protocol.DISCOVERY_ACK.toByteArray()
+        val logPrefix = Protocol.LOG_PREFIX.toByteArray()
+        while (running) {
+            try {
+                val pkt = DatagramPacket(buf, buf.size)
+                sock.receive(pkt)
+                val data = buf.copyOf(pkt.length)
+                when {
+                    data.contentEquals(ack) -> {
+                        if (targetIp == null) onTargetFound(pkt.address, manual = false)
+                    }
+                    data.size == 3 && data[0] == 0x54.toByte() && data[1] == 0x43.toByte() &&
+                        data[2] == Protocol.KEYFRAME_REQUEST_CMD -> {
+                        val now = System.currentTimeMillis()
+                        if (now - lastKeyframeRequestMs >= 200) {
+                            lastKeyframeRequestMs = now
+                            requestSyncFrame()
+                        }
+                    }
+                    data.size > logPrefix.size &&
+                        data.copyOfRange(0, logPrefix.size).contentEquals(logPrefix) -> {
+                        CastLog.event(
+                            "R: " + data.copyOfRange(logPrefix.size, data.size)
+                                .toString(Charsets.UTF_8)
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                if (running) CastLog.event("Kontrol error: ${e.message}")
+            }
+        }
+    }
+
+    /** Drain encoder -> kirim langsung. Satu-satunya penulis ke socket video. */
+    private fun drainLoop(sock: DatagramSocket) {
+        val enc = codec ?: return
+        val info = MediaCodec.BufferInfo()
+        var framesSent = 0L
+        var framesDroppedNoTarget = 0L
+        try {
             while (running) {
-                when (val out = enc.dequeueOutputBuffer(info, 100_000)) {
+                when (val out = enc.dequeueOutputBuffer(info, 10_000)) {
                     MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
-                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> Unit
+                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> readCodecConfig(enc)
                     else -> {
-                        if (out >= 0) {
-                            val buffer = enc.getOutputBuffer(out)
-                            if (buffer != null) {
-                                val bytes = ByteArray(info.size)
-                                buffer.position(info.offset)
-                                buffer.get(bytes)
-                                val timestampMs = (info.presentationTimeUs / 1000).toUInt()
-                                val isConfig = (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
-                                if (isConfig) {
-                                    configBytes = bytes
-                                    // SPS/PPS dikirim sendiri dulu (receiver bisa pakai csd-0),
-                                    // lalu ditempel juga ke keyframe berikutnya (in-band) —
-                                    // decoder yang mengabaikan buffer config tetap bisa mulai.
-                                    for (packet in packetizer.packetsFor(bytes, timestampMs, isCodecConfig = true)) {
-                                        sendQueue.put(packet)
-                                    }
-                                } else {
-                                    val isKey = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
-                                    val payload = if (isKey && configBytes != null) configBytes!! + bytes else bytes
-                                    for (packet in packetizer.packetsFor(payload, timestampMs)) {
-                                        sendQueue.put(packet)
-                                    }
-                                    framesSent++
-                                    if (framesSent % 30 == 0L) {
-                                        CastLog.event("Frame terkirim: $framesSent")
-                                    }
+                        if (out < 0) continue
+                        try {
+                            if ((info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                                // Buffer config mentah tidak dikirim; konfigurasi
+                                // resmi dibaca dari format (readCodecConfig).
+                                continue
+                            }
+                            if (info.size <= 0) continue
+                            val buffer = enc.getOutputBuffer(out) ?: continue
+                            val bytes = ByteArray(info.size)
+                            buffer.position(info.offset)
+                            buffer.limit(info.offset + info.size)
+                            buffer.get(bytes)
+                            val timestampMs = (info.presentationTimeUs / 1000).toUInt()
+                            val isKey = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
+                            val dest = target
+                            if (dest == null) {
+                                framesDroppedNoTarget++
+                                continue
+                            }
+                            if (isKey) {
+                                configPayload?.let {
+                                    sendFrame(sock, dest, it, timestampMs, isCodecConfig = true)
                                 }
                             }
-                            enc.releaseOutputBuffer(out, false)
+                            sendFrame(sock, dest, bytes, timestampMs, isKeyframe = isKey)
+                            framesSent++
+                            if (framesSent % 120 == 0L) {
+                                CastLog.event("Frame terkirim: $framesSent (tanpa target dibuang: $framesDroppedNoTarget)")
+                            }
+                        } finally {
+                            runCatching { enc.releaseOutputBuffer(out, false) }
                         }
                     }
                 }
-                sendPending(sock, target)
             }
         } catch (e: Exception) {
-            CastLog.event("ERROR encoder: ${e.javaClass.simpleName}: ${e.message}")
-            onStatus("Gagal: ${e.message}")
-        } finally {
-            stop()
+            if (running) {
+                CastLog.event("ERROR encoder drain: ${e.javaClass.simpleName}: ${e.message}")
+                onStatus("Gagal: ${e.message}")
+            }
+        }
+    }
+
+    /** Baca SPS/PPS + ukuran dari format encoder dan siapkan frame konfigurasi. */
+    private fun readCodecConfig(enc: MediaCodec) {
+        runCatching {
+            val format = enc.outputFormat
+            val spsBuf = format.getByteBuffer("csd-0") ?: return
+            val ppsBuf = format.getByteBuffer("csd-1") ?: return
+            val sps = ByteArray(spsBuf.remaining()).also { spsBuf.get(it) }
+            val pps = ByteArray(ppsBuf.remaining()).also { ppsBuf.get(it) }
+            configPayload = Protocol.codecConfigBytes(
+                Protocol.CodecConfig(sps, pps, width, height)
+            )
+            CastLog.event("Konfigurasi codec siap: ${width}x${height}, SPS ${sps.size} B, PPS ${pps.size} B")
+            target?.let { dest ->
+                socket?.let { sendFrame(it, dest, configPayload!!, 0u, isCodecConfig = true) }
+            }
+        }.onFailure {
+            CastLog.event("Baca konfigurasi codec gagal: ${it.message}")
+        }
+    }
+
+    private fun sendFrame(
+        sock: DatagramSocket,
+        dest: InetAddress,
+        data: ByteArray,
+        timestampMs: UInt,
+        isKeyframe: Boolean = false,
+        isCodecConfig: Boolean = false,
+    ) {
+        for (packet in packetizer.packetsFor(data, timestampMs, isKeyframe, isCodecConfig)) {
+            runCatching { sock.send(DatagramPacket(packet, packet.size, dest, Protocol.DEFAULT_PORT)) }
         }
     }
 
     /** Buat encoder H.264 surface; coba beberapa konfigurasi sampai berhasil. */
     private fun createEncoder(): MediaCodec? {
-        // Mode bitrate paling kompatibel di depan; CQ (constant quality) sering
-        // ditolak sebagian perangkat.
+        // Mode bitrate paling kompatibel di depan; CQ (constant quality)
+        // sering ditolak sebagian perangkat. Codec BARU tiap percobaan —
+        // codec yang sudah di-release tidak bisa dipakai ulang.
         val variants = listOf(
             Variant("CBR", MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR, true),
             Variant("VBR", MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR, true),
@@ -247,12 +322,7 @@ class ScreenStreamer(
             Variant("default tanpa max-b-frames", null, false),
         )
         for (v in variants) {
-            // Codec BARU tiap percobaan — codec yang sudah di-release tidak bisa dipakai ulang.
             val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-            if (enc == null) {
-                CastLog.event("ERROR encoder: perangkat tidak punya encoder H.264")
-                return null
-            }
             try {
                 val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
                     setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
@@ -286,14 +356,6 @@ class ScreenStreamer(
         val maxBFrames: Boolean,
     )
 
-    /** Kirim semua paket yang sudah menunggu di antrean. */
-    private fun sendPending(sock: DatagramSocket, target: InetAddress) {
-        while (running) {
-            val packet = sendQueue.poll() ?: break
-            sock.send(DatagramPacket(packet, packet.size, target, Protocol.DEFAULT_PORT))
-        }
-    }
-
     private fun requestSyncFrame() {
         runCatching {
             codec?.setParameters(
@@ -303,17 +365,19 @@ class ScreenStreamer(
     }
 
     fun stop() {
+        if (!running && codec == null) return
         running = false
-        started = false
         runCatching { socket?.close() }
+        socket = null
         runCatching { virtualDisplay?.release() }
+        virtualDisplay = null
         runCatching { codec?.stop() }
         runCatching { codec?.release() }
         codec = null
         runCatching { projection.unregisterCallback(projectionCallback) }
         runCatching { projection.stop() }
-        sendQueue.clear()
-        targetQueue.clear()
+        target = null
+        configPayload = null
         CastLog.event("Streaming dihentikan")
     }
 }
