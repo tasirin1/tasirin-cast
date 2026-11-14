@@ -1,60 +1,35 @@
 package com.tasirin.cast.protocol
 
+import java.util.ArrayDeque
+
 /**
- * Buffer urutan paket UDP sederhana di sisi receiver.
+ * Antrean frame utuh antara thread jaringan dan thread decoder (receiver).
  *
- * - Paket yang datang tidak urut dikumpulkan dulu, lalu dipoll berurutan.
- * - Sebelum streaming mulai (belum ada `expected`), urutan memakai nilai seq
- *   numerik (awal streaming selalu seq kecil). Setelah itu, urutan memakai
- *   jarak relatif terhadap `expected` (aman terhadap wrap-around UShort).
- * - Paket duplikat / sudah lewat dari urutan sekarang dibuang.
- * - Kapasitas dibatasi; paket tertua dibuang saat penuh.
+ * Sengaja kecil: untuk latensi rendah, frame lama yang menumpuk lebih
+ * baik dibuang daripada ditampilkan terlambat. Saat penuh, frame TERTUA
+ * yang dibuang ([offer] tetap menerima frame baru). Semua metode aman
+ * dipanggil dari banyak thread.
  */
-class JitterBuffer(private val capacity: Int = 128) {
+class JitterBuffer(private val capacity: Int = 3) {
 
-    private val packets = LinkedHashMap<UShort, Packet>()
-    private var expected: UShort? = null
+    private val queue = ArrayDeque<Frame>()
 
-    /** Simpan paket; false jika duplikat / sudah lewat / buffer penuh. */
-    fun offer(header: PacketHeader, payload: ByteArray): Boolean {
-        val exp = expected
-        if (exp != null && !isAfterOrEqual(header.seq, exp)) return false
-        if (packets.containsKey(header.seq)) return false
-        if (packets.size >= capacity) {
-            val oldest = packets.keys.firstOrNull() ?: return false
-            packets.remove(oldest)
-        }
-        packets[header.seq] = Packet(header, payload)
-        reorder()
+    /** Masukkan frame; mengembalikan true bila frame tersimpan. */
+    @Synchronized
+    fun offer(frame: Frame): Boolean {
+        if (capacity <= 0) return false
+        while (queue.size >= capacity) queue.removeFirst()
+        queue.addLast(frame)
         return true
     }
 
-    /** Ambil paket berikutnya secara berurutan; null jika kosong. */
-    fun poll(): Packet? {
-        val head = packets.keys.firstOrNull() ?: return null
-        val packet = packets.remove(head)
-        expected = head
-        return packet
-    }
+    /** Ambil frame tertua; null bila kosong. */
+    @Synchronized
+    fun poll(): Frame? = if (queue.isEmpty()) null else queue.removeFirst()
 
-    val size: Int get() = packets.size
+    @Synchronized
+    fun clear() = queue.clear()
 
-    private fun reorder() {
-        val exp = expected
-        val sorted = if (exp != null) {
-            packets.keys.sortedBy { (it - exp).toInt() and 0xFFFF }
-        } else {
-            packets.keys.sortedBy { it.toInt() }
-        }
-        val reordered = LinkedHashMap<UShort, Packet>(sorted.size)
-        for (key in sorted) reordered[key] = packets.getValue(key)
-        packets.clear()
-        packets.putAll(reordered)
-    }
-
-    /** True jika [candidate] sama dengan atau setelah [base] dalam aritmetika wrap-around. */
-    private fun isAfterOrEqual(candidate: UShort, base: UShort): Boolean {
-        val delta = (candidate - base).toInt() and 0xFFFF
-        return delta < 0x8000
-    }
+    val size: Int
+        @Synchronized get() = queue.size
 }
