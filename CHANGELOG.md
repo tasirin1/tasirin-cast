@@ -1,3 +1,14 @@
+## [v2.0 — 2026-11-14] — Fix VerifyError lanjutan: JitterBuffer juga ReentrantLock
+
+- Build 100035 (RealtimeLog sudah ReentrantLock) MASIH VerifyError
+  dengan jejak identik di HP owner — tersangka pertama gugur. Sisa
+  sumber instruksi monitor di library bersama tinggal metode
+  `@Synchronized` JitterBuffer (antrean frame yang disentuh thread
+  decoder & jaringan receiver; sender tidak memakainya, cocok dengan
+  sender yang selalu normal).
+- Fix: JitterBuffer diganti ReentrantLock juga — sekarang tidak ada
+  lagi penguncian berbasis monitor di seluruh library protocol.
+
 ## [v2.0 — 2026-11-14] — Fix crash saat Mulai ditekan (VerifyError monitor)
 
 - Akar masalah terbukti dari laporan crash di layar Log HP owner
