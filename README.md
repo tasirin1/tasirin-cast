@@ -31,19 +31,20 @@ Dibangun dengan **Kotlin + Jetpack**, tanpa iklan, tanpa akun, kode terbuka di G
 HP pengirim (app-sender)                    HP penerima (app-receiver)
 ┌──────────────────────────┐                 ┌──────────────────────────┐
 │ MediaProjection          │   UDP unicast   │ UDP socket               │
-│   ↓ VirtualDisplay       │ ──────────────► │   ↓ jitter buffer        │
+│   ↓ VirtualDisplay       │ ──────────────► │   ↓ frame assembler      │
 │   ↓ MediaCodec H.264     │                 │   ↓ MediaCodec H.264     │
-│   ↓ packetizer (1.2 KB)  │  ◄─ keyframe    │   ↓ SurfaceView          │
+│   ↓ packetizer (1.2 KB)  │  ◄─ keyframe    │   ↓ TextureView          │
 └──────────────────────────┘   request      └──────────────────────────┘
         module :protocol (framing UDP, header seq/keyframe) dipakai dua-duanya
 ```
 
 - **Sender**: tangkap layar via `MediaProjection` → encode H.264 (tanpa B-frame,
-  bitrate mode CQ) → potong paket UDP kecil → kirim. Sejak Android 14 memakai
+  mode bitrate fallback CBR/VBR/CQ) → potong paket UDP kecil → kirim. Sejak Android 14 memakai
   foreground service `mediaProjection` (wajib untuk targetSdk 34+), jadi streaming
   tetap jalan saat app di background.
-- **Receiver**: terima UDP → urutkan di jitter buffer → decode → render langsung
-  ke `SurfaceView`.
+- **Receiver**: terima UDP → rakit frame dari nomor frame + offset → decode
+  (decoder dikonfigurasi dari frame konfigurasi sender: SPS/PPS + ukuran
+  asli) → render frame terbaru ke `TextureView`.
 - **Anti-loss**: receiver kirim paket *request keyframe* balik ke sender saat ada
   paket hilang (bukan retransmit per paket).
 
@@ -52,14 +53,19 @@ HP pengirim (app-sender)                    HP penerima (app-receiver)
 | Modul | Tipe | Peran |
 |---|---|---|
 | `app-sender` | APK | Transmitter layar (MediaProjection + MediaCodec + UDP) |
-| `app-receiver` | APK | Receiver (UDP + MediaCodec + SurfaceView) |
-| `protocol` | Library | Framing UDP, header paket, jitter buffer, konstanta bersama |
+| `app-receiver` | APK | Receiver (UDP + MediaCodec + TextureView) |
+| `protocol` | Library | Framing UDP, header paket, perakit frame, konstanta bersama |
 
 ## Protokol
 
 - Transport: **UDP unicast**, port default `45555` (konstanta `Protocol.DEFAULT_PORT`).
-- Header 12 byte: magic `"TC"` + versi + flags (frame-start) + sequence
-  (wrap-around) + timestamp (ms) + ukuran payload.
+- Header 22 byte: magic `"TC"` + versi + flags (keyframe / codec config) +
+  nomor frame + offset byte + panjang total frame + timestamp (ms) +
+  ukuran payload. Tiap paket tahu persis frame & posisinya, jadi paket
+  hilang hanya membuang frame itu — tidak merusak frame lain.
+- Konfigurasi codec (SPS/PPS + ukuran) dikirim sebagai frame tersendiri
+  dan diulang sebelum tiap keyframe; decoder receiver dikonfigurasi dari
+  frame itu.
 - Paket ≤ 1200 byte (di bawah MTU, hindari fragmentasi).
 - Discovery: broadcast `TC-HI` di port `45556` → receiver balas `TC-OK`.
 - Anti-loss: receiver minta keyframe balik saat ada paket hilang.
@@ -68,7 +74,7 @@ HP pengirim (app-sender)                    HP penerima (app-receiver)
 
 - [x] Scaffold monorepo (sender + receiver + protocol)
 - [x] Sender: MediaProjection + encoder H.264 via Surface
-- [x] Receiver: jitter buffer + decoder H.264 + SurfaceView
+- [x] Receiver: perakit frame + decoder H.264 + TextureView
 - [x] Discovery otomatis (UDP broadcast) + fallback input IP manual
 - [x] Keyframe request saat loss
 - [ ] Audio (mic / aplikasi sendiri — catatan: capture audio internal butuh API 29+)

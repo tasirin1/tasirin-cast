@@ -12,15 +12,15 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
 ├── app-sender/build.gradle.kts       # Transmitter: MediaProjection + MediaCodec + UDP
 │   └── stream/ScreenStreamer.kt      # Capture → encode H.264 → packetizer → UDP
 │   └── LogActivity.kt                # Log realtime + ekspor TXT
-├── app-receiver/build.gradle.kts     # Receiver: UDP + jitter buffer + MediaCodec + SurfaceView
-│   └── net/ScreenReceiver.kt         # UDP → jitter → assembler → decoder → Surface
+├── app-receiver/build.gradle.kts     # Receiver: UDP + perakit frame + MediaCodec + TextureView
+│   └── net/ScreenReceiver.kt         # UDP → assembler → decoder → TextureView
 │   └── LogActivity.kt                # Log realtime + ekspor TXT
-├── protocol/build.gradle.kts         # Library bersama: framing UDP, header, jitter buffer
+├── protocol/build.gradle.kts         # Library bersama: framing UDP, header, antrean frame
 │   ├── RealtimeLog.kt                # Buffer log aman multi-thread
 │   └── CastLog.kt                    # Log realtime per-proses app (object)
-│   ├── Protocol.kt / PacketHeader.kt # Konstanta + header 12 byte bersama
+│   ├── Protocol.kt / PacketHeader.kt # Konstanta + header 22 byte bersama
 │   ├── Packetizer.kt / FrameAssembler.kt  # Pecah & rakit frame jadi chunk UDP
-│   └── JitterBuffer.kt               # Urutkan paket, buang duplikat/lama
+│   └── JitterBuffer.kt               # Antrean frame utuh kecil (jaringan → decoder)
 ├── CHANGELOG.md                       # Riwayat perubahan per rilis (update manual)
 ├── settings.gradle.kts               # rootProject "TasirinCast"; include 3 modul
 └── gradle wrapper                    # build via ./gradlew (CI saja untuk rilis)
@@ -29,10 +29,11 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
 ## Arsitektur ringkas
 
 - **Sender** (`app-sender`): `MediaProjection` → `VirtualDisplay` + `InputSurface`
-  → `MediaCodec` (H.264, tanpa B-frame, bitrate mode CQ) → packetizer UDP (≤1200 B).
-- **Receiver** (`app-receiver`): UDP socket → `JitterBuffer` (urutkan seq,
-  buang duplikat) → `FrameAssembler` (rakit frame utuh) → `MediaCodec` decoder
-  (thread drain render) → `SurfaceView`.
+  → `MediaCodec` (H.264, tanpa B-frame, bitrate fallback CBR/VBR/CQ) → packetizer UDP (≤1200 B).
+- **Receiver** (`app-receiver`): UDP socket → `FrameAssembler` (rakit frame
+  dari nomor frame + offset + panjang total) → antrean frame kecil
+  (`JitterBuffer`) → `MediaCodec` decoder (dikonfigurasi dari frame
+  konfigurasi sender; render hanya frame terbaru) → `TextureView`.
 - **Protokol** (`protocol`): semua konstanta & format paket di sini — sender dan
   receiver WAJIB sinkron byte-per-byte. Perubahan protokol = perubahan satu commit.
 - **Anti-loss**: receiver mengirim paket *request keyframe* (IDR) saat ada paket
@@ -47,7 +48,7 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
    - **Komentar kode, dokumentasi internal, dan commit tetap Bahasa Indonesia**.
 3. **Gaya commit**: `type(scope): deskripsi` — tipe: `feat`, `fix`, `ui`, `perf`,
    `refactor`, `docs`, `chore`. Satu commit satu tujuan.
-4. **Jangan ubah `versionName`/`versionCode` manual** — `versionName` tetap `"1.0"`;
+4. **Jangan ubah `versionName`/`versionCode` manual** — `versionName` tetap `"2.0"`;
    `versionCode` di-bump otomatis oleh CI (`100000 + run_number`).
 5. **Jaga kompatibilitas Android 5 (minSdk 21)**: API baru harus punya fallback;
    jangan naikkan minSdk tanpa diskusi.
@@ -58,11 +59,11 @@ Panduan lengkap (arsitektur, cara pakai) ada di `README.md` — jaga sinkron.
    compile/CI sebelum merge ke `main`.
 9. **Lint & unit test wajib hijau** sebelum merge — `lintDebug` (abortOnError
    aktif) mengawal API >21 jangan sampai lolos; `testDebugUnitTest` menjaga
-   logika murni (`protocol`: header paket, jitter buffer).
+   logika murni (`protocol`: header paket, perakit frame, antrean frame).
 10. **Update dependensi (AGP/Kotlin/Gradle) bertahap** — jangan lompat beberapa
     versi sekaligus; tiap langkah lewat CI dulu.
 11. **Changelog wajib per PR** — setiap PR menambah entri `CHANGELOG.md`
-    (judul `## [v1.0 — tanggal] — ringkasan`) dan menyebut nomor PR pada isi
+    (judul `## [v2.0 — tanggal] — ringkasan`) dan menyebut nomor PR pada isi
     entri setelah PR dibuat.
 12. **Jangan berhenti di tengah alur rilis** — setelah PR merge, pantau build
     `main` sampai sukses.

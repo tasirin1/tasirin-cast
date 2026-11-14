@@ -1,3 +1,23 @@
+## [v2.0 — 2026-11-14] — Kerangka streaming ditulis ulang (protokol v4)
+
+- Protokol v4: header 22 byte membawa nomor frame + offset byte + panjang
+  total frame. Perakitan frame di receiver kini pasti — paket hilang hanya
+  membuang frame itu, tidak lagi menyambung sisa frame lain (v3 menebak
+  akhir frame dari ukuran chunk dan menggabung sisa frame saat paket
+  hilang; itu sumber utama gambar rusak/decoder diam).
+- Receiver: decoder dikonfigurasi dari frame konfigurasi sender (SPS/PPS
+  + ukuran asli sebagai csd-0/csd-1) — tidak lagi ditebak 1280x720 tanpa
+  csd. Thread decoder tidak pernah menunggu input buffer (frame dibuang
+  saat decoder sibuk, bukan ditumpuk jadi delay) dan hanya merender frame
+  terbaru. Surface kini bisa diganti di tengah jalan tanpa restart
+  penerima (setSurface).
+- Sender: drain encoder mengirim paket langsung ke socket (antrean
+  perantara dibuang — sumber penumpukan delay), konfigurasi codec dibaca
+  dari format encoder dan diulang sebelum setiap keyframe.
+- JitterBuffer disederhanakan menjadi antrean frame utuh kecil (buang
+  tertua saat penuh). Unit test protokol ditulis ulang mengikuti API v4.
+- versionName naik ke 2.0 mengikuti penulisan ulang ini (perintah owner).
+
 ## [v1.0 — 2026-08-14] — Koreksi aspek layar di receiver (fix gepeng & geser)
 
 - Sender mengirim ukuran layar aslinya ke receiver (paket kontrol
