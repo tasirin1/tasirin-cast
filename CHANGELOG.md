@@ -1,3 +1,13 @@
+## [v2.0 — 2026-11-14] — Fix crash receiver saat dibuka (TextureView background)
+
+- Akar masalah terbukti dari stack trace owner (HP Android 15):
+  `UnsupportedOperationException: TextureView doesn't support
+  displaying a background drawable` saat inflate layout — TextureView
+  receiver membawa `android:background` yang ditolak Android 8+.
+  Atribut itu dihapus; warna latar tetap dipegang FrameLayout induk.
+  Di STB (Android 6) atribut yang sama ditoleransi, jadi receiver di
+  sana bisa dibuka — crash STB saat Mulai adalah perkara terpisah.
+
 ## [v2.0 — 2026-11-14] — Dump crash ke Download + fix ekspor log Android lama
 
 - Laporan uji perangkat: receiver force close di STB (saat Mulai) dan

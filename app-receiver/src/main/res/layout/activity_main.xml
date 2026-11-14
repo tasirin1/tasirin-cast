@@ -4,12 +4,13 @@
     android:layout_height="match_parent"
     android:background="#111">
 
-    <!-- Target render MediaCodec (decoder). -->
+    <!-- Target render MediaCodec (decoder). JANGAN beri background:
+         TextureView menolak background drawable (crash saat inflate di
+         Android 8+); warna latar dipegang FrameLayout induk. -->
     <TextureView
         android:id="@+id/textureView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#111" />
+        android:layout_height="match_parent" />
 
     <!-- Tombol stop overlay saat streaming (semi-transparan). -->
     <Button
