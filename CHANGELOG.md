@@ -1,3 +1,15 @@
+## [v2.0 — 2026-11-14] — Fix crash saat Mulai ditekan (VerifyError monitor)
+
+- Akar masalah terbukti dari laporan crash di layar Log HP owner
+  (build 100034, receiver sudah bisa dibuka): begitu tombol Mulai
+  ditekan, `VerifyError: ... expected to be within a catch-all for an
+  instruction where a monitor is held` di Runnable thread receiver —
+  blok `synchronized` di RealtimeLog (dipakai semua thread lewat
+  CastLog) ditolak verifier ART sesudah optimasi R8. Kemungkinan besar
+  ini juga penyebab crash "Mulai" di STB (jalur kode yang sama).
+- Fix akar: penguncian RealtimeLog diganti ReentrantLock (tanpa
+  instruksi monitor sama sekali); perilaku log tidak berubah.
+
 ## [v2.0 — 2026-11-14] — Fix crash receiver saat dibuka (TextureView background)
 
 - Akar masalah terbukti dari stack trace owner (HP Android 15):
