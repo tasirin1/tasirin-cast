@@ -116,9 +116,12 @@ class LogActivity : AppCompatActivity() {
                 val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
                 resolver.update(uri, done, null, null) > 0
             } else {
-                val dir = Environment.getExternalStoragePublicDirectory(
-                    Environment.DIRECTORY_DOWNLOADS
-                )
+                // API < 29: folder Download publik butuh izin tulis yang
+                // tidak dimiliki app, jadi ekspor selalu gagal (kasus STB
+                // Android 6). Folder eksternal khusus app selalu bisa
+                // ditulis tanpa izin:
+                // Android/data/<paket>/files/Download/.
+                val dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
                 if (dir == null) return@runCatching false
                 if (!dir.isDirectory && !dir.mkdirs()) return@runCatching false
                 File(dir, fileName).writeText(header)

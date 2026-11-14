@@ -1,3 +1,15 @@
+## [v2.0 — 2026-11-14] — Dump crash ke Download + fix ekspor log Android lama
+
+- Laporan uji perangkat: receiver force close di STB (saat Mulai) dan
+  tidak bisa dibuka di HP Android 15 (sender normal). CrashCatcher kini
+  juga menyalin laporan crash ke folder Download (API 29+) dengan nama
+  CRASH-<paket>.txt, supaya penyebabnya bisa dibaca walau app tidak
+  bisa dibuka sama sekali.
+- Fix ekspor log di Android < 29 (STB Android 6 selalu gagal): folder
+  Download publik butuh izin tulis yang tidak dimiliki app; ekspor kini
+  menulis ke folder eksternal khusus app
+  (Android/data/<paket>/files/Download) yang selalu bisa ditulis.
+
 ## [v2.0 — 2026-11-14] — Kerangka streaming ditulis ulang (protokol v4)
 
 - Protokol v4: header 22 byte membawa nomor frame + offset byte + panjang
