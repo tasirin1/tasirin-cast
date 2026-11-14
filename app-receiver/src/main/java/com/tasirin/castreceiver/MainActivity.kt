@@ -32,7 +32,8 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private var videoHeight = 720
 
     // Ukuran layar asli sender (dari paket SCREEN_INFO); aspek tampilan
-    // mengikuti ini supaya gambar tidak gepeng walau encoder/decoder menjepit.
+    // mengikuti ini supaya gambar tidak gepeng walau encoder/decoder
+    // menjepit resolusi.
     private var screenWidth = 1280
     private var screenHeight = 720
 
@@ -54,10 +55,11 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         }
         binding.btnStop.setOnClickListener { stopReceiver() }
 
-        // TextureView selalu me-reset ukuran buffer SurfaceTexture ke ukuran
-        // view saat layout berubah (mis. mode immersive menyembunyikan system
-        // bar). Listener ini mengembalikannya ke ukuran video asli + ulang
-        // transform supaya tampilan tetap fit-center.
+        // TextureView selalu me-reset ukuran buffer SurfaceTexture ke
+        // ukuran view saat layout berubah (mis. mode immersive
+        // menyembunyikan system bar). Listener ini mengembalikannya ke
+        // ukuran video asli + ulang transform supaya tampilan tetap
+        // fit-center.
         val listener = ViewTreeObserver.OnGlobalLayoutListener {
             runCatching { surfaceTexture?.setDefaultBufferSize(videoWidth, videoHeight) }
             updateTextureTransform()
@@ -74,23 +76,19 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             return
         }
         surfaceTexture = st
-        // Buffer texture WAJIB selebar video asli — kalau dibiarkan selebar view,
-        // video sudah ter-stretch penuh lalu transform fit-center justru
-        // memperbesar (jadi tidak ke tengah & ke-zoom-in).
+        // Buffer texture WAJIB selebar video asli — kalau dibiarkan selebar
+        // view, transform fit-center justru memperbesar gambar.
         st.setDefaultBufferSize(videoWidth, videoHeight)
-        surface?.release()
-        val s = Surface(st)
-        surface = s
         val r = ScreenReceiver(
-            s,
             onStatus = { msg -> setStatus(msg) },
             onVideoSize = { w, h -> handleVideoSize(w, h) },
             onScreenSize = { w, h -> handleScreenSize(w, h) },
         )
         receiver = r
+        attachSurface(st)
         r.start()
         // Fullscreen saat streaming: sembunyikan panel kontrol & hint,
-        // tampilkan tombol Stop, dan sembunyikan system bar.
+        // tampilkan tombol Stop, sembunyikan system bar.
         binding.controlsPanel.visibility = View.GONE
         binding.tvHint.visibility = View.GONE
         binding.btnStop.visibility = View.VISIBLE
@@ -102,7 +100,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private fun stopReceiver() {
         receiver?.stop()
         receiver = null
-        surface?.release()
+        surface?.let { if (it.isValid) it.release() }
         surface = null
         binding.btnStart.text = getString(R.string.btn_start)
         binding.controlsPanel.visibility = View.VISIBLE
@@ -112,8 +110,16 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         setStatus(getString(R.string.status_waiting, Protocol.DEFAULT_PORT))
     }
 
-    // Dipanggil dari thread decoder saat ukuran output berubah (resolusi asli
-    // streaming, misal 1080p). Semua akses view di posting ke main thread.
+    /** Pasang surface baru ke receiver (decoder dibuat ulang di thread-nya). */
+    private fun attachSurface(st: SurfaceTexture) {
+        surface?.let { if (it.isValid) it.release() }
+        val s = Surface(st)
+        surface = s
+        receiver?.setSurface(s)
+    }
+
+    // Dipanggil dari thread decoder saat ukuran output berubah (resolusi
+    // asli streaming). Semua akses view diposting ke main thread.
     private fun handleScreenSize(w: Int, h: Int) {
         if (w <= 0 || h <= 0) return
         runOnUiThread {
@@ -139,29 +145,31 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         }
     }
 
-    // SurfaceTextureListener: kalau surface dibuat ulang saat receiver jalan,
-    // restart receiver dengan surface baru supaya render tidak ke surface mati.
-    override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
-        this.surfaceTexture = surfaceTexture
-        runCatching { surfaceTexture.setDefaultBufferSize(videoWidth, videoHeight) }
+    // SurfaceTextureListener: surface berganti di tengah jalan cukup
+    // diteruskan ke receiver (setSurface) — tidak perlu restart total.
+    override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) {
+        surfaceTexture = st
+        runCatching { st.setDefaultBufferSize(videoWidth, videoHeight) }
         updateTextureTransform()
         if (receiver != null) {
-            CastLog.event("Surface dibuat ulang — restart receiver")
-            stopReceiver()
-            startReceiver()
+            CastLog.event("Surface dibuat ulang — dipasang ke receiver")
+            attachSurface(st)
         }
     }
 
-    override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
-        stopReceiver()
+    override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
+        receiver?.setSurface(null)
+        surface?.let { if (it.isValid) it.release() }
+        surface = null
+        surfaceTexture = null
         return true
     }
 
-    override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+    override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, width: Int, height: Int) {
         updateTextureTransform()
     }
 
-    override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) = Unit
+    override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
 
     // Fokus kembali saat streaming: pastikan system bar tetap tersembunyi.
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -173,8 +181,8 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
      * Video dirender ke buffer SurfaceTexture berukuran frame (videoWidth x
      * videoHeight). Transform ini:
      * 1) meregangkan buffer ke aspek layar sender (screenWidth x screenHeight)
-     *    — mengoreksi encoder/decoder yang menjepit resolusi (mis. 720x1600
-     *    menjadi 720x1088) sehingga isi layar tidak gepeng;
+     *    — mengoreksi encoder/decoder yang menjepit resolusi sehingga isi
+     *    layar tidak gepeng;
      * 2) memetakannya fit-center ke view.
      */
     private fun updateTextureTransform() {
