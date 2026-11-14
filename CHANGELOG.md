@@ -1,3 +1,21 @@
+## [v2.0 — 2026-11-15] — Fix frame konfigurasi codec gagal dibuat (buffer kurang 2 byte)
+
+- Bukti dari log uji pemilik 2026-11-15 (build 100036, HP → STB):
+  receiver TIDAK crash lagi dan frame utuh diterima beruntun
+  (120/240/360) — VerifyError sudah sembuh. Tapi tiap streaming mulai,
+  sender mencatat "Baca konfigurasi codec gagal: src.length=8
+  dst.length=37 dstPos=31 length=8", jadi frame konfigurasi tidak
+  pernah terkirim dan decoder receiver tidak pernah bisa mulai
+  (layar tidak tampil).
+- Akar masalah: `Protocol.codecConfigBytes` mengalokasikan buffer
+  `6 + sps + pps`, padahal formatnya `[w:2][h:2][spsLen:2][sps]
+  [ppsLen:2][pps]` butuh `8 + sps + pps` — lupa 2 byte field ppsLen,
+  sehingga penyalinan PPS (dstPos 8+sps) selalu meluber 2 byte.
+  Parser receiver sudah benar (mengharap 8 byte kepala).
+- Fix: alokasi jadi `8 + sps + pps`, plus uji unit round-trip
+  `ProtocolTest` memakai ukuran persis perangkat pemilik
+  (SPS 23 B, PPS 8 B, 288×640) agar tidak kambuh.
+
 ## [v2.0 — 2026-11-14] — Fix VerifyError lanjutan: JitterBuffer juga ReentrantLock
 
 - Build 100035 (RealtimeLog sudah ReentrantLock) MASIH VerifyError

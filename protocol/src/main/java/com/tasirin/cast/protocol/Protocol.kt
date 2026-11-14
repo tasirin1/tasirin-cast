@@ -75,7 +75,8 @@ object Protocol {
      * `[w:2][h:2][spsLen:2][sps][ppsLen:2][pps]` (big-endian).
      */
     fun codecConfigBytes(config: CodecConfig): ByteArray {
-        val out = ByteArray(6 + config.sps.size + config.pps.size)
+        // Total = 2 (w) + 2 (h) + 2 (spsLen) + sps + 2 (ppsLen) + pps.
+        val out = ByteArray(8 + config.sps.size + config.pps.size)
         fun putShort(at: Int, value: Int) {
             out[at] = ((value shr 8) and 0xFF).toByte()
             out[at + 1] = (value and 0xFF).toByte()
